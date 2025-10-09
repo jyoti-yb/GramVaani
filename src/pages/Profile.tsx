@@ -34,6 +34,7 @@ const Profile = () => {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [editedProfile, setEditedProfile] = useState<Profile | null>(null);
   const [currentInput, setCurrentInput] = useState({
     project: '',
@@ -73,6 +74,40 @@ const Profile = () => {
       toast.error('Failed to update profile');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleCreate = async () => {
+    if (!user) return;
+    setCreating(true);
+    const newProfile: Profile = {
+      username: user.username,
+      fullName: user.fullName || '',
+      branch: '',
+      college: '',
+      year: 1,
+      projects: [],
+      skills: [],
+      interests: [],
+      achievements: [],
+      bio: '',
+      phone: '',
+      githubLink: '',
+      linkedinLink: '',
+    };
+
+    try {
+      const response = await profileAPI.create(newProfile);
+      const created = response.data;
+      setProfile(created);
+      setEditedProfile(created);
+      setEditing(true);
+      toast.success('Profile created! You can now edit your details.');
+    } catch (error) {
+      console.error('Error creating profile:', error);
+      toast.error('Failed to create profile');
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -141,7 +176,20 @@ const Profile = () => {
         <Navbar />
         <div className="container mx-auto px-6 py-12">
           <Card className="p-12 text-center">
-            <p className="text-muted-foreground">Profile not found. Please complete your profile setup.</p>
+            <p className="text-muted-foreground mb-6">Profile not found. Create your profile to get started.</p>
+            <Button onClick={handleCreate} disabled={creating} className="bg-gradient-primary hover:opacity-90">
+              {creating ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Create Profile
+                </>
+              )}
+            </Button>
           </Card>
         </div>
       </div>
