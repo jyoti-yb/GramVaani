@@ -92,7 +92,7 @@ const Signup = () => {
               <Input
                 id="username"
                 name="username"
-                placeholder="2300012345"
+                placeholder="username"
                 value={formData.username}
                 onChange={handleChange}
                 required
@@ -107,7 +107,7 @@ const Signup = () => {
                 id="email"
                 name="email"
                 type="email"
-                placeholder="john@kluniversity.in"
+                placeholder="email@gmail.com"
                 value={formData.email}
                 onChange={handleChange}
                 required
