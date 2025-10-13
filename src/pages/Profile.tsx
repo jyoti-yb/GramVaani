@@ -54,7 +54,6 @@ const Profile = () => {
       setProfile(response.data);
       setEditedProfile(response.data);
     } catch (error) {
-      console.error('Error loading profile:', error);
       toast.error('Failed to load profile');
     } finally {
       setLoading(false);
@@ -104,7 +103,6 @@ const Profile = () => {
       setEditing(true);
       toast.success('Profile created! You can now edit your details.');
     } catch (error) {
-      console.error('Error creating profile:', error);
       toast.error('Failed to create profile');
     } finally {
       setCreating(false);
