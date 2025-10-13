@@ -83,7 +83,6 @@ const Ideas = () => {
       );
       setIdeas(sortedIdeas);
     } catch (error) {
-      console.error('Error loading ideas:', error);
       toast.error('Failed to load ideas');
     } finally {
       setLoading(false);
@@ -135,7 +134,6 @@ const Ideas = () => {
       }));
       setComments(commentsWithDefaults);
     } catch (error) {
-      console.error('Error loading comments:', error);
     }
   };
 
