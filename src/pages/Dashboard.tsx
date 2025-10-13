@@ -73,7 +73,7 @@ const Dashboard = () => {
       const sortedFeeds = (response.data || []).sort((a: Feed, b: Feed) => b.id - a.id);
       setFeeds(sortedFeeds);
     } catch (error) {
-      console.error('Error loading feeds:', error);
+      toast.error('Error load feeds');
     } finally {
       setLoading(false);
     }
@@ -120,7 +120,7 @@ const Dashboard = () => {
       const response = await feedAPI.getComments(feedId);
       setComments(response.data);
     } catch (error) {
-      console.error('Error loading comments:', error);
+      
     }
   };
 
