@@ -39,17 +39,12 @@ const Login = () => {
     
     setLoading(true);
 
-    console.log('🔐 Attempting login for username:', formData.username);
 
     try {
       const response = await userAPI.login(formData);
-      console.log('📥 Login response:', response);
-      console.log('📥 Response data:', response.data);
-      console.log('📥 Response status:', response.status);
 
       // Check if login was successful - backend returns specific success message
       if (response.status === 200 && typeof response.data === 'string' && response.data.includes('Login successful')) {
-        console.log('✅ Login successful!');
         
         // Fetch user details and store in context
         login({
@@ -59,16 +54,11 @@ const Login = () => {
         });
         
         toast.success('Welcome back!');
-        console.log('🚀 Navigating to dashboard...');
         navigate('/dashboard');
       } else {
-        console.log('❌ Unexpected response:', response.data);
         toast.error('Invalid username or password');
       }
     } catch (error: any) {
-      console.error('❌ Login error:', error);
-      console.error('Error response:', error.response);
-      console.error('Error message:', error.message);
       
       // Backend returns error for wrong credentials
       if (error.response?.status === 400 || error.response?.status === 401) {
