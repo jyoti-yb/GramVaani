@@ -119,7 +119,6 @@ const Projects = () => {
             const profileRes = await profileAPI.get(r.applicant);
             applicant = profileRes.data.fullName || r.myUsername;
           } catch (error) {
-            console.error('Failed to fetch applicant profile:', error);
           }
           
           return {
@@ -146,7 +145,6 @@ const Projects = () => {
       const applied = new Set<string>(applicationsWithDefaults.map((a: Application) => a.projectName));
       setAppliedProjects(applied);
     } catch (error) {
-      console.error('Error loading data:', error);
       toast.error('Failed to load projects');
     } finally {
       setLoading(false);
@@ -247,7 +245,6 @@ const Projects = () => {
     // Reload all data to sync applications and requests
     await loadData();
   } catch (error) {
-    console.error('Delete error:', error);
     toast.error('Failed to delete project');
   } finally {
     setDeleting(null);
