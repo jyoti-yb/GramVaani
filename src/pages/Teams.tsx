@@ -109,7 +109,6 @@ const Teams = () => {
           const teamApps = (appsRes.data || []).filter((app: TeamApplication) => app.applicant === user.username);
           allApplications.push(...teamApps);
         } catch (err) {
-          console.log('No applications for team:', team.teamName);
         }
       }
       setMyApplications(allApplications);
@@ -122,7 +121,6 @@ const Teams = () => {
           const reqsRes = await teamsAPI.getApplications(team.teamName);
           allRequests.push(...(reqsRes.data || []));
         } catch (err) {
-          console.log('No requests for team:', team.teamName);
         }
       }
       setRequests(allRequests);
@@ -131,7 +129,6 @@ const Teams = () => {
       const applied = new Set(allApplications.map((a: TeamApplication) => a.teamName));
       setAppliedTeams(applied);
     } catch (error) {
-      console.error('Error loading teams:', error);
       toast.error('Failed to load teams');
     } finally {
       setLoading(false);
@@ -242,7 +239,6 @@ const Teams = () => {
       toast.success('Team deleted successfully');
       loadData();
     } catch (error) {
-      console.error('Delete error:', error);
       toast.error('Failed to delete team');
     } finally {
       setDeleting(null);
