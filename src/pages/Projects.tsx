@@ -72,6 +72,9 @@ const Projects = () => {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [appliedProjects, setAppliedProjects] = useState<Set<string>>(new Set());
   const [applying, setApplying] = useState(false);
+  const [applicationMessage, setApplicationMessage] = useState<string>('');
+  const [applyingProjectId, setApplyingProjectId] = useState<number | null>(null);
+
   const [newProject, setNewProject] = useState({
     title: '',
     description: '',
@@ -180,36 +183,41 @@ const Projects = () => {
   };
 
   const handleApplyToProject = async (project: Project) => {
-    // Prevent duplicate applications
-    if (appliedProjects.has(project.title)) {
-      toast.error('You have already applied to this project');
-      return;
-    }
+  if (appliedProjects.has(project.title)) {
+    toast.error('You have already applied to this project');
+    return;
+  }
 
-    setApplying(true);
-    try {
-      await projectAPI.apply({
-        title: project.title,
-        myUsername: user?.username,
-        username: project.teamLead,
-        fullName: project.fullName,
-        projectName: project.title,
-        description: "I am interested in joining this project",
-        technologies: [],
-        category: project.category,
-      });
-      
-      // Immediately update local state
-      setAppliedProjects(prev => new Set(prev).add(project.title));
-      
-      toast.success('Application submitted successfully!');
-      loadData();
-    } catch (error) {
-      toast.error('Failed to submit application');
-    } finally {
-      setApplying(false);
-    }
-  };
+  if (!applicationMessage.trim()) {
+    toast.error('Please enter a message before applying');
+    return;
+  }
+
+  setApplying(true);
+  try {
+    await projectAPI.apply({
+      title: project.title,
+      myUsername: user?.username,
+      username: project.teamLead,
+      fullName: project.fullName,
+      projectName: project.title,
+      description: applicationMessage,
+      technologies: [],
+      category: project.category,
+    });
+
+    setAppliedProjects(prev => new Set(prev).add(project.title));
+    toast.success('Application submitted successfully!');
+    setApplicationMessage(''); // clear after applying
+    setApplyingProjectId(null);
+    loadData();
+  } catch (error) {
+    toast.error('Failed to submit application');
+  } finally {
+    setApplying(false);
+  }
+};
+
 
   const handleAcceptApplicant = async (application: Application) => {
     setAccepting(application.id);
@@ -414,23 +422,41 @@ const Projects = () => {
                         </div>
                       </CardContent>
                       <CardFooter>
-                        <Button
-                          onClick={() => handleApplyToProject(project)}
-                          className="w-full bg-gradient-primary hover:opacity-90"
-                          disabled={applying || appliedProjects.has(project.title)}
-                        >
-                          {applying ? (
-                            <>
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              Submitting...
-                            </>
-                          ) : appliedProjects.has(project.title) ? (
-                            'Applied'
-                          ) : (
-                            'Apply to Join'
-                          )}
-                        </Button>
-                      </CardFooter>
+  {!appliedProjects.has(project.title) && (
+    <div className="space-y-2 w-full">
+      <Textarea
+        placeholder="Write a message to the project owner..."
+        value={applyingProjectId === project.id ? applicationMessage : ''}
+        onChange={(e) => {
+          setApplyingProjectId(project.id);
+          setApplicationMessage(e.target.value);
+        }}
+        rows={2}
+        className="mb-2 w-full"
+      />
+      <Button
+        onClick={() => handleApplyToProject(project)}
+        className="w-full bg-gradient-primary hover:opacity-90"
+        disabled={applying}
+      >
+        {applying ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Submitting...
+          </>
+        ) : (
+          'Apply to Join'
+        )}
+      </Button>
+    </div>
+  )}
+  {appliedProjects.has(project.title) && (
+    <Button disabled className="w-full bg-gray-400">
+      Applied
+    </Button>
+  )}
+</CardFooter>
+
                     </Card>
                   ))}
                 </div>
