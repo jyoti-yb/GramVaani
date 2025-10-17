@@ -2,6 +2,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { useAuth } from '@/contexts/AuthContext';
+import { Bell } from 'lucide-react';
+
 import {
   
   Home,
@@ -94,6 +96,10 @@ export const Navbar = () => {
                   </Avatar>
                 </Button>
               </DropdownMenuTrigger>
+              <Button variant="ghost" onClick={() => navigate('/notifications')}>
+  <Bell className="w-5 h-5" />
+</Button>
+
               <DropdownMenuContent align="end" className="w-56">
                 <div className="px-2 py-2">
                   <p className="font-semibold">{user?.fullName || user?.username}</p>

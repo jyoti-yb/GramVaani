@@ -88,5 +88,12 @@ export const groupAPI = {
   getMembers: (groupName: string) => api.get(`/project/group/members/${groupName}`),
 };
 
+// Notification APIs
+export const notificationAPI = {
+  create: (data) => api.post('/notification/create', null, { params: data }),
+  getUserNotifications: (receiver) => api.get(`/notification/user/${receiver}`),
+};
+
+
 // Chat API (WebSocket endpoint)
 export const CHAT_WS_URL = 'wss://localhost:8081/ws-chat';
