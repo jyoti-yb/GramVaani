@@ -30,7 +30,6 @@ const ChatPage: React.FC = () => {
   const stompClientRef = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Fetch groups for logged-in user
   useEffect(() => {
     if (user) {
       groupAPI
@@ -41,7 +40,6 @@ const ChatPage: React.FC = () => {
     }
   }, [user]);
 
-  // Connect WebSocket on mount
   useEffect(() => {
     const socket = new SockJS(CHAT_WS_URL);
     const stompClient = over(socket);
@@ -49,28 +47,20 @@ const ChatPage: React.FC = () => {
     stompClientRef.current = stompClient;
 
     return () => {
-      if (stompClientRef.current) {
-        stompClientRef.current.disconnect(() =>
-          console.log("❌ Disconnected WebSocket")
-        );
-      }
+      stompClientRef.current?.disconnect(() =>
+        console.log("❌ Disconnected WebSocket")
+      );
     };
   }, []);
 
-  // Load old messages + subscribe to new ones when group changes
   useEffect(() => {
     if (!selectedGroup || !stompClientRef.current) return;
 
-    // Load message history from backend
     api
       .get(`/chat/${selectedGroup.groupName}`)
-      .then((res) => {
-        console.log("Loaded old messages:", res.data);
-        setMessages(res.data);
-      })
+      .then((res) => setMessages(res.data))
       .catch((err) => console.error("Error loading messages:", err));
 
-    // Subscribe for new messages
     const subscription = stompClientRef.current.subscribe(
       `/topic/group/${selectedGroup.groupName}`,
       (msg: any) => {
@@ -79,18 +69,16 @@ const ChatPage: React.FC = () => {
       }
     );
 
-    return () => {
-      subscription.unsubscribe();
-      setMessages([]); // clear when switching groups
-    };
+    return () => subscription.unsubscribe();
   }, [selectedGroup]);
 
-  // Scroll to bottom whenever messages change
+  // Smooth auto-scroll to bottom for new messages
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
+    }
   }, [messages]);
 
-  // Send a new chat message
   const sendMessage = () => {
     if (!newMessage.trim() || !selectedGroup || !user) return;
 
@@ -101,14 +89,11 @@ const ChatPage: React.FC = () => {
       messageType: "CHAT",
     };
 
-    console.log("Sending message:", messagePayload);
-
     stompClientRef.current.send(
       "/app/chat.sendMessage",
       {},
       JSON.stringify(messagePayload)
     );
-
     setNewMessage("");
   };
 
@@ -123,11 +108,11 @@ const ChatPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
       <Navbar />
-      <div className="flex flex-1 gap-4 p-6">
-        {/* Left Sidebar: Groups */}
-        <div className="w-64 flex-shrink-0 bg-card p-4 rounded-xl shadow-md space-y-2 overflow-y-auto">
+      <div className="flex flex-1 flex-col md:flex-row gap-4 p-4 md:p-6">
+        {/* Sidebar */}
+        <div className="w-full md:w-64 flex-shrink-0 bg-card p-4 rounded-xl shadow-md space-y-2 overflow-y-auto max-h-[calc(100vh-100px)]">
           {groups.length === 0 ? (
-            <p className="text-muted-foreground">No projects found</p>
+            <p className="text-muted-foreground text-center">No projects found</p>
           ) : (
             groups.map((group) => (
               <button
@@ -148,50 +133,72 @@ const ChatPage: React.FC = () => {
           )}
         </div>
 
-        {/* Right Chat Section */}
+        {/* Chat Section */}
         <div className="flex-1 bg-card p-4 rounded-xl shadow-md flex flex-col">
           {selectedGroup ? (
             <>
-              <h3 className="text-2xl font-bold">{selectedGroup.groupName}</h3>
+              <h3 className="text-xl md:text-2xl font-bold text-center md:text-left mb-2">
+                {selectedGroup.groupName}
+              </h3>
 
-              {/* Messages List */}
-              <div className="flex-1 mt-4 overflow-y-auto space-y-2">
+              {/* Messages Area */}
+              <div
+                className="flex-1 overflow-y-auto scroll-smooth px-2 py-3 space-y-3 border border-border rounded-lg bg-background/70"
+                style={{ maxHeight: "calc(100vh - 220px)" }}
+              >
                 {messages.length === 0 ? (
-                  <p className="text-muted-foreground">No messages yet</p>
+                  <p className="text-muted-foreground text-center mt-10">
+                    No messages yet
+                  </p>
                 ) : (
-                  messages.map((msg, idx) => (
-                    <div
-                      key={idx}
-                      className={`p-2 rounded-lg ${
-                        msg.sender === user?.username
-                          ? "bg-primary/20 text-right"
-                          : "bg-primary/10"
-                      }`}
-                    >
-                      <strong>{msg.sender}:</strong> {msg.content}
-                      {msg.timestamp && (
-                        <div className="text-xs text-muted-foreground">
-                          {new Date(msg.timestamp).toLocaleString()}
+                  messages.map((msg, idx) => {
+                    const isMine = msg.sender === user?.username;
+                    return (
+                      <div
+                        key={idx}
+                        className={`flex w-full ${
+                          isMine ? "justify-end" : "justify-start"
+                        }`}
+                      >
+                        <div
+                          className={`max-w-[80%] md:max-w-[60%] p-2 px-3 rounded-2xl break-words shadow-sm ${
+                            isMine
+                              ? "bg-green-500 text-white rounded-br-none"
+                              : "bg-gray-300 dark:bg-gray-700 text-black dark:text-white rounded-bl-none"
+                          }`}
+                        >
+                          <div className="text-sm font-semibold">
+                            {msg.sender}
+                          </div>
+                          <div className="text-base leading-snug">{msg.content}</div>
+                          {msg.timestamp && (
+                            <div className="text-[10px] text-right mt-1 opacity-75">
+                              {new Date(msg.timestamp).toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  ))
+                      </div>
+                    );
+                  })
                 )}
                 <div ref={messagesEndRef} />
               </div>
 
               {/* Message Input */}
-              <div className="mt-4 flex gap-2">
+              <div className="mt-4 flex gap-2 items-center">
                 <input
                   type="text"
-                  className="flex-1 p-2 rounded-lg border border-gray-300"
+                  className="flex-1 p-3 rounded-full border border-border bg-background text-foreground placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary"
                   placeholder="Type a message..."
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && sendMessage()}
                 />
                 <button
-                  className="bg-primary text-white px-4 rounded-lg"
+                  className="bg-primary text-white px-5 py-2 rounded-full hover:bg-primary/90 transition"
                   onClick={sendMessage}
                 >
                   Send

@@ -360,15 +360,6 @@ const Teams = () => {
                           </Button>
                         </div>
                       </CardContent>
-                      <CardFooter>
-                        <Button
-                          onClick={() => joinChat(team)}
-                          className="w-full bg-gradient-primary hover:opacity-90"
-                        >
-                          <MessageSquare className="mr-2 h-4 w-4" />
-                          Join Chat
-                        </Button>
-                      </CardFooter>
                     </Card>
                   ))}
                 </div>
