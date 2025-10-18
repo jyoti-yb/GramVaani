@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useAuth } from "../contexts/AuthContext";
-import { groupAPI, CHAT_WS_URL } from "@/lib/api";
+import { groupAPI, api, CHAT_WS_URL } from "@/lib/api";
 import { Navbar } from "@/components/Navbar";
 import SockJS from "sockjs-client";
 import { over } from "stompjs";
@@ -12,11 +12,12 @@ interface ChatGroup {
 }
 
 interface ChatMessage {
+  id?: number;
   groupName: string;
   sender: string;
   content: string;
   messageType: string;
-  timestamp: string;
+  timestamp?: string;
 }
 
 const ChatPage: React.FC = () => {
@@ -29,7 +30,7 @@ const ChatPage: React.FC = () => {
   const stompClientRef = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Fetch groups
+  // Fetch groups for logged-in user
   useEffect(() => {
     if (user) {
       groupAPI
@@ -40,33 +41,36 @@ const ChatPage: React.FC = () => {
     }
   }, [user]);
 
-  // Connect to WebSocket
+  // Connect WebSocket on mount
   useEffect(() => {
-    const socket = new SockJS(CHAT_WS_URL); // Use HTTP/HTTPS URL for SockJS
+    const socket = new SockJS(CHAT_WS_URL);
     const stompClient = over(socket);
-    stompClient.connect({}, () => {
-      console.log("Connected to WebSocket");
-    });
+    stompClient.connect({}, () => console.log("✅ Connected to WebSocket"));
     stompClientRef.current = stompClient;
 
     return () => {
       if (stompClientRef.current) {
-        stompClientRef.current.disconnect(() => console.log("Disconnected WebSocket"));
+        stompClientRef.current.disconnect(() =>
+          console.log("❌ Disconnected WebSocket")
+        );
       }
     };
   }, []);
 
-  // Fetch and subscribe messages for selected group
+  // Load old messages + subscribe to new ones when group changes
   useEffect(() => {
     if (!selectedGroup || !stompClientRef.current) return;
 
-    // Fetch initial messages via REST
-    fetch(`/chat/${selectedGroup.groupName}`)
-      .then((res) => res.json())
-      .then((data) => setMessages(data))
-      .catch((err) => console.error(err));
+    // Load message history from backend
+    api
+      .get(`/chat/${selectedGroup.groupName}`)
+      .then((res) => {
+        console.log("Loaded old messages:", res.data);
+        setMessages(res.data);
+      })
+      .catch((err) => console.error("Error loading messages:", err));
 
-    // Subscribe to WebSocket topic
+    // Subscribe for new messages
     const subscription = stompClientRef.current.subscribe(
       `/topic/group/${selectedGroup.groupName}`,
       (msg: any) => {
@@ -77,25 +81,27 @@ const ChatPage: React.FC = () => {
 
     return () => {
       subscription.unsubscribe();
-      setMessages([]); // clear messages when switching groups
+      setMessages([]); // clear when switching groups
     };
   }, [selectedGroup]);
 
-  // Scroll to bottom when messages update
+  // Scroll to bottom whenever messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Send message
+  // Send a new chat message
   const sendMessage = () => {
     if (!newMessage.trim() || !selectedGroup || !user) return;
 
-    const messagePayload = {
+    const messagePayload: ChatMessage = {
       groupName: selectedGroup.groupName,
       sender: user.username,
-      content: newMessage,
+      content: newMessage.trim(),
       messageType: "CHAT",
     };
+
+    console.log("Sending message:", messagePayload);
 
     stompClientRef.current.send(
       "/app/chat.sendMessage",
@@ -103,22 +109,22 @@ const ChatPage: React.FC = () => {
       JSON.stringify(messagePayload)
     );
 
-    setNewMessage(""); // clear input
+    setNewMessage("");
   };
 
-  if (loading)
+  if (loading) {
     return (
       <div className="text-center mt-10 text-muted-foreground">
         Loading chats...
       </div>
     );
+  }
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
       <Navbar />
-
       <div className="flex flex-1 gap-4 p-6">
-        {/* Left: Groups List */}
+        {/* Left Sidebar: Groups */}
         <div className="w-64 flex-shrink-0 bg-card p-4 rounded-xl shadow-md space-y-2 overflow-y-auto">
           {groups.length === 0 ? (
             <p className="text-muted-foreground">No projects found</p>
@@ -127,8 +133,11 @@ const ChatPage: React.FC = () => {
               <button
                 key={group.id}
                 onClick={() => setSelectedGroup(group)}
-                className={`w-full text-left p-3 rounded-lg transition
-                  ${selectedGroup?.id === group.id ? "bg-primary/20" : "hover:bg-primary/10"}`}
+                className={`w-full text-left p-3 rounded-lg transition ${
+                  selectedGroup?.id === group.id
+                    ? "bg-primary/20"
+                    : "hover:bg-primary/10"
+                }`}
               >
                 <h3 className="font-semibold">{group.groupName}</h3>
                 <p className="text-sm text-muted-foreground">
@@ -139,30 +148,39 @@ const ChatPage: React.FC = () => {
           )}
         </div>
 
-        {/* Right: Chat Panel */}
+        {/* Right Chat Section */}
         <div className="flex-1 bg-card p-4 rounded-xl shadow-md flex flex-col">
           {selectedGroup ? (
             <>
               <h3 className="text-2xl font-bold">{selectedGroup.groupName}</h3>
 
-              {/* Messages */}
+              {/* Messages List */}
               <div className="flex-1 mt-4 overflow-y-auto space-y-2">
                 {messages.length === 0 ? (
                   <p className="text-muted-foreground">No messages yet</p>
                 ) : (
                   messages.map((msg, idx) => (
-                    <div key={idx} className="p-2 rounded-lg bg-primary/10">
+                    <div
+                      key={idx}
+                      className={`p-2 rounded-lg ${
+                        msg.sender === user?.username
+                          ? "bg-primary/20 text-right"
+                          : "bg-primary/10"
+                      }`}
+                    >
                       <strong>{msg.sender}:</strong> {msg.content}
-                      <div className="text-xs text-muted-foreground">
-                        {msg.timestamp}
-                      </div>
+                      {msg.timestamp && (
+                        <div className="text-xs text-muted-foreground">
+                          {new Date(msg.timestamp).toLocaleString()}
+                        </div>
+                      )}
                     </div>
                   ))
                 )}
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Input Box */}
+              {/* Message Input */}
               <div className="mt-4 flex gap-2">
                 <input
                   type="text"
@@ -170,9 +188,7 @@ const ChatPage: React.FC = () => {
                   placeholder="Type a message..."
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") sendMessage();
-                  }}
+                  onKeyDown={(e) => e.key === "Enter" && sendMessage()}
                 />
                 <button
                   className="bg-primary text-white px-4 rounded-lg"
