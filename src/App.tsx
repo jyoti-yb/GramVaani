@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
+
 import { NotificationsPage } from '@/pages/NotificationsPage';
 import Landing from "./pages/Landing";
 import Signup from "./pages/Signup";
@@ -18,6 +19,7 @@ import Profile from "./pages/Profile";
 import Support from "./pages/Support";
 import Feedback from "./pages/Feedback";
 import NotFound from "./pages/NotFound";
+import Chat from "./pages/ChatPage"; // ✅ Import Chat page
 
 const queryClient = new QueryClient();
 
@@ -42,6 +44,10 @@ const App = () => (
               <Route path="/support" element={<Support />} />
               <Route path="/feedback" element={<Feedback />} />
               <Route path="/notifications" element={<NotificationsPage />} />
+              
+              {/* ✅ Chat route */}
+              <Route path="/chat" element={<Chat />} />
+
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>

@@ -85,8 +85,9 @@ export const feedAPI = {
 
 // Group APIs
 export const groupAPI = {
-  getMembers: (groupName: string) => api.get(`/project/group/members/${groupName}`),
+  getAllGroups: (username: string) => api.get(`/group/${username}`),
 };
+
 
 // Notification APIs
 export const notificationAPI = {

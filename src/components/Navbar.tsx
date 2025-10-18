@@ -2,10 +2,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { useAuth } from '@/contexts/AuthContext';
-import { Bell } from 'lucide-react';
-
 import {
-  
   Home,
   FolderKanban,
   Users,
@@ -14,6 +11,8 @@ import {
   User,
   LifeBuoy,
   MessageSquare,
+  Bell,
+  MessageCircle,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -29,11 +28,13 @@ export const Navbar = () => {
   const location = useLocation();
   const { user, logout } = useAuth();
 
+  // 🟢 Added Chat page here
   const navItems = [
     { path: '/dashboard', icon: Home, label: 'Explore' },
     { path: '/projects', icon: FolderKanban, label: 'Projects' },
     { path: '/teams', icon: Users, label: 'Teams' },
     { path: '/ideas', icon: Lightbulb, label: 'Ideas' },
+    { path: '/chat', icon: MessageCircle, label: 'Chat' }, // 👈 New Chat link
   ];
 
   const handleLogout = () => {
@@ -46,7 +47,10 @@ export const Navbar = () => {
       <div className="container mx-auto px-6 py-4">
         <div className="flex items-center justify-between">
           {/* Logo */}
-          <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/dashboard')}>
+          <div
+            className="flex items-center gap-2 cursor-pointer"
+            onClick={() => navigate('/dashboard')}
+          >
             <div className="w-12 h-12 flex items-center justify-center">
               <img
                 src="/logo3.png"
@@ -59,7 +63,7 @@ export const Navbar = () => {
             </h1>
           </div>
 
-          {/* Nav Items */}
+          {/* Nav Items (Desktop) */}
           <div className="hidden md:flex items-center gap-2">
             {navItems.map((item) => {
               const Icon = item.icon;
@@ -82,10 +86,23 @@ export const Navbar = () => {
             })}
           </div>
 
-          {/* Right Side */}
+          {/* Right Side (Theme + Notifications + Profile) */}
           <div className="flex items-center gap-3">
+            {/* Theme Toggle */}
             <ThemeToggle />
-            
+
+            {/* Notification Icon */}
+            <Button
+              variant="ghost"
+              className="relative h-10 w-10 rounded-full"
+              onClick={() => navigate('/notifications')}
+            >
+              <Bell className="w-5 h-5" />
+              {/* Optional notification dot */}
+              <span className="absolute top-2 right-2 block h-2 w-2 rounded-full bg-red-500"></span>
+            </Button>
+
+            {/* User Dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-10 w-10 rounded-full">
@@ -96,9 +113,6 @@ export const Navbar = () => {
                   </Avatar>
                 </Button>
               </DropdownMenuTrigger>
-              <Button variant="ghost" onClick={() => navigate('/notifications')}>
-  <Bell className="w-5 h-5" />
-</Button>
 
               <DropdownMenuContent align="end" className="w-56">
                 <div className="px-2 py-2">
