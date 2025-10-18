@@ -97,4 +97,4 @@ export const notificationAPI = {
 
 
 // Chat API (WebSocket endpoint)
-export const CHAT_WS_URL = 'wss://localhost:8081/ws-chat';
+export const CHAT_WS_URL = 'https://campulse-mvp-1-be-production.up.railway.app/ws-chat';
