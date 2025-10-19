@@ -30,6 +30,7 @@ const ChatPage: React.FC = () => {
   const stompClientRef = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // 🟩 Fetch user's chat groups
   useEffect(() => {
     if (user) {
       groupAPI
@@ -40,6 +41,7 @@ const ChatPage: React.FC = () => {
     }
   }, [user]);
 
+  // 🟩 WebSocket connection setup
   useEffect(() => {
     const socket = new SockJS(CHAT_WS_URL);
     const stompClient = over(socket);
@@ -53,6 +55,7 @@ const ChatPage: React.FC = () => {
     };
   }, []);
 
+  // 🟩 Load messages for selected group
   useEffect(() => {
     if (!selectedGroup || !stompClientRef.current) return;
 
@@ -72,13 +75,14 @@ const ChatPage: React.FC = () => {
     return () => subscription.unsubscribe();
   }, [selectedGroup]);
 
-  // Smooth auto-scroll to bottom for new messages
+  // 🟩 Smooth scroll to bottom on new message
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
     }
   }, [messages]);
 
+  // 🟩 Send message
   const sendMessage = () => {
     if (!newMessage.trim() || !selectedGroup || !user) return;
 
@@ -95,6 +99,23 @@ const ChatPage: React.FC = () => {
       JSON.stringify(messagePayload)
     );
     setNewMessage("");
+  };
+
+  // 🗓️ Format date like WhatsApp
+  const formatDateLabel = (dateString: string) => {
+    const date = new Date(dateString);
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+
+    if (date.toDateString() === today.toDateString()) return "Today";
+    if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
+
+    return date.toLocaleDateString(undefined, {
+      day: "numeric",
+      month: "short",
+      year: today.getFullYear() !== date.getFullYear() ? "numeric" : undefined,
+    });
   };
 
   if (loading) {
@@ -143,7 +164,7 @@ const ChatPage: React.FC = () => {
 
               {/* Messages Area */}
               <div
-                className="flex-1 overflow-y-auto scroll-smooth px-2 py-3 space-y-3 border border-border rounded-lg bg-background/70"
+                className="flex-1 overflow-y-auto scroll-smooth px-2 py-3 border border-border rounded-lg bg-background/70"
                 style={{ maxHeight: "calc(100vh - 220px)" }}
               >
                 {messages.length === 0 ? (
@@ -151,38 +172,71 @@ const ChatPage: React.FC = () => {
                     No messages yet
                   </p>
                 ) : (
-                  messages.map((msg, idx) => {
-                    const isMine = msg.sender === user?.username;
-                    return (
-                      <div
-                        key={idx}
-                        className={`flex w-full ${
-                          isMine ? "justify-end" : "justify-start"
-                        }`}
-                      >
-                        <div
-                          className={`max-w-[80%] md:max-w-[60%] p-2 px-3 rounded-2xl break-words shadow-sm ${
-                            isMine
-                              ? "bg-green-500 text-white rounded-br-none"
-                              : "bg-gray-300 dark:bg-gray-700 text-black dark:text-white rounded-bl-none"
-                          }`}
-                        >
-                          <div className="text-sm font-semibold">
-                            {msg.sender}
-                          </div>
-                          <div className="text-base leading-snug">{msg.content}</div>
-                          {msg.timestamp && (
-                            <div className="text-[10px] text-right mt-1 opacity-75">
-                              {new Date(msg.timestamp).toLocaleTimeString([], {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </div>
-                          )}
+                  (() => {
+                    const groupedMessages: { [date: string]: ChatMessage[] } = {};
+                    messages.forEach((msg) => {
+                      const date = new Date(msg.timestamp || "").toDateString();
+                      if (!groupedMessages[date]) groupedMessages[date] = [];
+                      groupedMessages[date].push(msg);
+                    });
+
+                    const sortedDates = Object.keys(groupedMessages).sort(
+                      (a, b) => new Date(a).getTime() - new Date(b).getTime()
+                    );
+
+                    return sortedDates.map((date, idx) => (
+                      <div key={idx}>
+                        {/* 🗓️ Date Separator */}
+                        <div className="text-center my-3">
+                          <span className="bg-gray-300 dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-xs px-3 py-1 rounded-full">
+                            {formatDateLabel(date)}
+                          </span>
+                        </div>
+
+                        {/* 💬 Messages */}
+                        <div className="space-y-3"> {/* adds space between bubbles */}
+                          {groupedMessages[date].map((msg, i) => {
+                            const isMine = msg.sender === user?.username;
+                            return (
+                              <div
+                                key={i}
+                                className={`flex w-full ${
+                                  isMine ? "justify-end" : "justify-start"
+                                }`}
+                              >
+                                <div
+                                  className={`max-w-[80%] md:max-w-[60%] px-4 py-2.5 rounded-2xl break-words shadow-sm ${
+                                    isMine
+                                      ? "bg-gradient-to-br from-green-400 to-green-600 text-white rounded-br-none"
+                                      : "bg-gradient-to-br from-gray-200 to-gray-400 dark:from-gray-700 dark:to-gray-800 text-black dark:text-white rounded-bl-none"
+                                  }`}
+                                  style={{
+                                    marginTop: "4px",
+                                    marginBottom: "4px",
+                                  }}
+                                >
+                                  <div className="text-sm font-semibold opacity-80 mb-1">
+                                    {msg.sender}
+                                  </div>
+                                  <div className="text-base leading-snug">
+                                    {msg.content}
+                                  </div>
+                                  {msg.timestamp && (
+                                    <div className="text-[10px] text-right mt-1 opacity-70">
+                                      {new Date(msg.timestamp).toLocaleTimeString([], {
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
-                    );
-                  })
+                    ));
+                  })()
                 )}
                 <div ref={messagesEndRef} />
               </div>
