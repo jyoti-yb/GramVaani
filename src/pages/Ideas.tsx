@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Navbar } from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -59,6 +59,7 @@ const Ideas = () => {
   const { user } = useAuth();
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState('');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showCommentsDialog, setShowCommentsDialog] = useState(false);
   const [showProfileDialog, setShowProfileDialog] = useState(false);
@@ -200,19 +201,33 @@ const Ideas = () => {
     }
   };
 
+  const filteredIdeas = useMemo(() => {
+    if (!query.trim()) return ideas;
+    const q = query.toLowerCase();
+    return ideas.filter((idea) => (
+      String(idea.title || '').toLowerCase().includes(q) ||
+      String(idea.description || '').toLowerCase().includes(q) ||
+      String(idea.teamLead || '').toLowerCase().includes(q) ||
+      String(idea.fullName || '').toLowerCase().includes(q)
+    ));
+  }, [ideas, query]);
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
 
       <div className="container mx-auto px-6 py-8">
-        <div className="flex items-center justify-between mb-8">
-          <div>
+        <div className="flex items-center justify-between mb-8 gap-4">
+          <div className="flex-1">
             <h1 className="text-4xl font-bold bg-gradient-hero bg-clip-text text-transparent mb-2">
               Project Ideas
             </h1>
             <p className="text-muted-foreground">
               Share your ideas and get validation from the community
             </p>
+            <div className="mt-3 max-w-xl">
+              <Input placeholder="Search ideas..." value={query} onChange={(e) => setQuery((e.target as HTMLInputElement).value)} />
+            </div>
           </div>
           <Button onClick={() => setShowCreateDialog(true)} className="bg-gradient-primary hover:opacity-90">
             <Plus className="mr-2 h-4 w-4" />
@@ -230,7 +245,7 @@ const Ideas = () => {
           </Card>
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {ideas.map((idea) => (
+            {filteredIdeas.map((idea) => (
               <Card key={`idea-${idea.id}-${idea.title}`} className="border-border/50 shadow-lg hover:shadow-xl transition-all animate-fade-in">
                 <CardHeader>
                   <div className="flex items-start justify-between gap-2">

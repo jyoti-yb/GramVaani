@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Navbar } from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
@@ -48,6 +48,7 @@ interface Profile {
 const Dashboard = () => {
   const { user } = useAuth();
   const [feeds, setFeeds] = useState<Feed[]>([]);
+  const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [postLoading, setPostLoading] = useState(false);
   const [newPost, setNewPost] = useState({ title: '', description: '' });
@@ -168,16 +169,31 @@ const Dashboard = () => {
     }
   };
 
+  const filteredFeeds = useMemo(() => {
+    if (!query.trim()) return feeds;
+    const q = query.toLowerCase();
+    return feeds.filter((f) => (
+      String(f.title || '').toLowerCase().includes(q) ||
+      String(f.description || '').toLowerCase().includes(q) ||
+      String(f.username || '').toLowerCase().includes(q)
+    ));
+  }, [feeds, query]);
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
 
       <div className="container mx-auto px-6 py-8 max-w-5xl">
         {/* Toolbar */}
-        <div className="mb-6 flex items-center justify-end">
-          <Button className="bg-gradient-primary hover:opacity-90" onClick={() => setShowNewPostDialog(true)}>
-            <Plus className="mr-2 h-4 w-4" /> New Post
-          </Button>
+        <div className="mb-6 flex items-center justify-between gap-4">
+          <div className="flex-1 max-w-xl">
+            <Input placeholder="Search feed..." value={query} onChange={(e) => setQuery((e.target as HTMLInputElement).value)} />
+          </div>
+          <div>
+            <Button className="bg-gradient-primary hover:opacity-90" onClick={() => setShowNewPostDialog(true)}>
+              <Plus className="mr-2 h-4 w-4" /> New Post
+            </Button>
+          </div>
         </div>
 
         {/* Feed */}
@@ -186,12 +202,12 @@ const Dashboard = () => {
             <div className="text-center py-12">
               <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
             </div>
-          ) : feeds.length === 0 ? (
+          ) : filteredFeeds.length === 0 ? (
             <Card className="p-12 text-center">
-              <p className="text-muted-foreground">No posts yet. Be the first to share!</p>
+              <p className="text-muted-foreground">No posts match your search.</p>
             </Card>
           ) : (
-            feeds.map((feed) => (
+            filteredFeeds.map((feed) => (
               <Card key={feed.id} className="border-border/50 shadow-lg hover:shadow-xl transition-shadow animate-fade-in">
                 <CardHeader>
                   <div className="flex items-start justify-between">

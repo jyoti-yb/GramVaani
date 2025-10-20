@@ -1,6 +1,6 @@
 import { Navbar } from '@/components/Navbar';
 import { useAuth } from '@/contexts/AuthContext';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { notificationAPI } from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from '@/hooks/use-toast';
@@ -10,6 +10,7 @@ import { Trash2 } from 'lucide-react';
 export const NotificationsPage = () => {
   const { user } = useAuth();
   const [notifications, setNotifications] = useState([]);
+  const [query, setQuery] = useState('');
 
   useEffect(() => {
     if (user?.username) {
@@ -26,6 +27,18 @@ export const NotificationsPage = () => {
     }
   };
 
+  const filteredNotifications = useMemo(() => {
+    if (!query.trim()) return notifications;
+    const q = query.toLowerCase();
+    return notifications.filter((n: any) => {
+      return (
+        String(n.title || '').toLowerCase().includes(q) ||
+        String(n.message || '').toLowerCase().includes(q) ||
+        String(n.sender || '').toLowerCase().includes(q)
+      );
+    });
+  }, [notifications, query]);
+
   const handleDelete = async (id: number) => {
     try {
       await notificationAPI.deleteNotification(id);
@@ -41,13 +54,23 @@ export const NotificationsPage = () => {
       <Navbar />
 
       <div className="container mx-auto px-6 py-12 max-w-4xl">
-        <h1 className="text-3xl font-bold mb-6">Notifications</h1>
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-3xl font-bold">Notifications</h1>
+          <div className="w-64">
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search notifications..."
+              className="w-full rounded-md border px-3 py-2"
+            />
+          </div>
+        </div>
 
-        {notifications.length === 0 ? (
-          <p className="text-muted-foreground">No notifications yet.</p>
+        {filteredNotifications.length === 0 ? (
+          <p className="text-muted-foreground">No notifications match your search.</p>
         ) : (
           <div className="grid gap-4">
-            {notifications.map((n) => (
+            {filteredNotifications.map((n) => (
               <Card key={n.id} className="hover:shadow-lg transition relative">
                 <CardContent className="p-4 flex justify-between items-start">
                   <div>

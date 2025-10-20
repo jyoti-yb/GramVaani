@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { Navbar } from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -76,6 +76,7 @@ const Teams = () => {
   const [accepting, setAccepting] = useState<number | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [appliedTeams, setAppliedTeams] = useState<Set<string>>(new Set());
+  const [query, setQuery] = useState('');
 
   const stompClientRef = useRef<Client | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -295,6 +296,38 @@ const Teams = () => {
   const myTeams = teams.filter((t) => t.teamLead === user?.username);
   const availableTeams = teams.filter((t) => t.teamLead !== user?.username);
 
+  const filteredMyTeams = useMemo(() => {
+    if (!query.trim()) return myTeams;
+    const q = query.toLowerCase();
+    return myTeams.filter((t) => String(t.teamName || '').toLowerCase().includes(q) || String(t.teamLead || '').toLowerCase().includes(q));
+  }, [myTeams, query]);
+
+  const filteredAvailableTeams = useMemo(() => {
+    if (!query.trim()) return availableTeams;
+    const q = query.toLowerCase();
+    return availableTeams.filter((t) => String(t.teamName || '').toLowerCase().includes(q) || String(t.teamLead || '').toLowerCase().includes(q));
+  }, [availableTeams, query]);
+
+  const filteredMyApplications = useMemo(() => {
+    if (!query.trim()) return myApplications;
+    const q = query.toLowerCase();
+    return myApplications.filter((a) =>
+      String(a.teamName || '').toLowerCase().includes(q) ||
+      String(a.teamLead || '').toLowerCase().includes(q) ||
+      String(a.applicant || '').toLowerCase().includes(q)
+    );
+  }, [myApplications, query]);
+
+  const filteredRequests = useMemo(() => {
+    if (!query.trim()) return requests;
+    const q = query.toLowerCase();
+    return requests.filter((r) =>
+      String(r.teamName || '').toLowerCase().includes(q) ||
+      String(r.teamLead || '').toLowerCase().includes(q) ||
+      String(r.applicant || '').toLowerCase().includes(q)
+    );
+  }, [requests, query]);
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -310,6 +343,10 @@ const Teams = () => {
           </Button>
         </div>
 
+        <div className="mb-4 max-w-lg">
+          <Input placeholder="Search teams or leads..." value={query} onChange={(e) => setQuery((e.target as HTMLInputElement).value)} />
+        </div>
+
         <Tabs defaultValue="browse" className="space-y-6">
           <TabsList className="grid w-full max-w-md grid-cols-3">
             <TabsTrigger value="browse">Browse</TabsTrigger>
@@ -320,11 +357,11 @@ const Teams = () => {
           {/* Browse Teams */}
           <TabsContent value="browse" className="space-y-6">
             {/* My Teams */}
-            {myTeams.length > 0 && (
+            {filteredMyTeams.length > 0 && (
               <div>
                 <h2 className="text-2xl font-semibold mb-4">My Teams</h2>
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {myTeams.map((team) => (
+                  {filteredMyTeams.map((team) => (
                     <Card key={team.teamName} className="border-border/50 shadow-lg hover:shadow-xl transition-all">
                       <CardHeader>
                         <div className="flex items-start justify-between">
@@ -379,7 +416,7 @@ const Teams = () => {
                 </Card>
               ) : (
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {availableTeams.map((team) => (
+                  {filteredAvailableTeams.map((team) => (
                     <Card key={team.teamName} className="border-border/50 shadow-lg hover:shadow-xl transition-all">
                       <CardHeader>
                         <CardTitle className="text-xl">{team.teamName}</CardTitle>
@@ -427,13 +464,13 @@ const Teams = () => {
 
           {/* My Applications */}
           <TabsContent value="my-applications" className="space-y-6">
-            {myApplications.length === 0 ? (
+            {filteredMyApplications.length === 0 ? (
               <Card className="p-12 text-center">
                 <p className="text-muted-foreground">You haven't applied to any teams yet</p>
               </Card>
             ) : (
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {myApplications.map((app) => (
+                {filteredMyApplications.map((app) => (
                   <Card key={app.id} className="border-border/50 shadow-lg">
                     <CardHeader>
                       <CardTitle className="text-xl">{app.teamName}</CardTitle>
@@ -452,13 +489,13 @@ const Teams = () => {
 
           {/* My Requests */}
           <TabsContent value="requests" className="space-y-6">
-            {requests.length === 0 ? (
+            {filteredRequests.length === 0 ? (
               <Card className="p-12 text-center">
                 <p className="text-muted-foreground">No applications yet</p>
               </Card>
             ) : (
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {requests.map((request) => (
+                {filteredRequests.map((request) => (
                   <Card key={request.id} className="border-border/50 shadow-lg">
                     <CardHeader>
                       <div className="flex items-center gap-3">

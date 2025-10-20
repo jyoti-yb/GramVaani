@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Navbar } from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -71,6 +71,7 @@ const Projects = () => {
   const [accepting, setAccepting] = useState<number | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [appliedProjects, setAppliedProjects] = useState<Set<string>>(new Set());
+  const [query, setQuery] = useState('');
   const [applying, setApplying] = useState(false);
   const [applicationMessage, setApplicationMessage] = useState<string>('');
   const [applyingProjectId, setApplyingProjectId] = useState<number | null>(null);
@@ -305,6 +306,48 @@ const Projects = () => {
   const myProjects = projects.filter((p) => p.teamLead === user?.username);
   const availableProjects = projects.filter((p) => p.teamLead !== user?.username);
 
+  const filteredMyProjects = useMemo(() => {
+    if (!query.trim()) return myProjects;
+    const q = query.toLowerCase();
+    return myProjects.filter((p) => (
+      String(p.title || '').toLowerCase().includes(q) ||
+      String(p.description || '').toLowerCase().includes(q) ||
+      String(p.teamLead || '').toLowerCase().includes(q) ||
+      String(p.category || '').toLowerCase().includes(q)
+    ));
+  }, [myProjects, query]);
+
+  const filteredAvailableProjects = useMemo(() => {
+    if (!query.trim()) return availableProjects;
+    const q = query.toLowerCase();
+    return availableProjects.filter((p) => (
+      String(p.title || '').toLowerCase().includes(q) ||
+      String(p.description || '').toLowerCase().includes(q) ||
+      String(p.teamLead || '').toLowerCase().includes(q) ||
+      String(p.category || '').toLowerCase().includes(q)
+    ));
+  }, [availableProjects, query]);
+
+  const filteredMyApplications = useMemo(() => {
+    if (!query.trim()) return myApplications;
+    const q = query.toLowerCase();
+    return myApplications.filter((a) => (
+      String(a.projectName || a.title || '').toLowerCase().includes(q) ||
+      String(a.fullName || a.username || '').toLowerCase().includes(q) ||
+      String(a.description || '').toLowerCase().includes(q)
+    ));
+  }, [myApplications, query]);
+
+  const filteredRequests = useMemo(() => {
+    if (!query.trim()) return requests;
+    const q = query.toLowerCase();
+    return requests.filter((r) => (
+      String(r.projectName || '').toLowerCase().includes(q) ||
+      String(r.myUsername || r.applicant || '').toLowerCase().includes(q) ||
+      String(r.description || '').toLowerCase().includes(q)
+    ));
+  }, [requests, query]);
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -320,6 +363,10 @@ const Projects = () => {
           </Button>
         </div>
 
+        <div className="mb-4 max-w-lg">
+          <Input placeholder="Search projects, category or owner..." value={query} onChange={(e) => setQuery((e.target as HTMLInputElement).value)} />
+        </div>
+
         <Tabs defaultValue="browse" className="space-y-6">
           <TabsList className="grid w-full max-w-md grid-cols-3">
             <TabsTrigger value="browse">Browse</TabsTrigger>
@@ -330,11 +377,11 @@ const Projects = () => {
           {/* Browse Projects */}
           <TabsContent value="browse" className="space-y-6">
             {/* My Projects */}
-            {myProjects.length > 0 && (
+            {filteredMyProjects.length > 0 && (
               <div>
                 <h2 className="text-2xl font-semibold mb-4">My Projects</h2>
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {myProjects.map((project) => (
+                  {filteredMyProjects.map((project) => (
                     <Card key={project.id} className="border-border/50 shadow-lg hover:shadow-xl transition-all">
                       <CardHeader>
                         <div className="flex items-start justify-between">
@@ -380,13 +427,13 @@ const Projects = () => {
                 <div className="text-center py-12">
                   <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
                 </div>
-              ) : availableProjects.length === 0 ? (
+              ) : filteredAvailableProjects.length === 0 ? (
                 <Card className="p-12 text-center">
-                  <p className="text-muted-foreground">No projects available</p>
+                  <p className="text-muted-foreground">No projects match your search</p>
                 </Card>
               ) : (
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {availableProjects.map((project) => (
+                  {filteredAvailableProjects.map((project) => (
                     <Card key={project.id} className="border-border/50 shadow-lg hover:shadow-xl transition-all">
                       <CardHeader>
                         <CardTitle className="text-xl">{project.title}</CardTitle>
@@ -466,14 +513,14 @@ const Projects = () => {
 
           {/* My Applications */}
           <TabsContent value="my-applications" className="space-y-6">
-            {myApplications.length === 0 ? (
-              <Card className="p-12 text-center">
-                <p className="text-muted-foreground">You haven't applied to any projects yet</p>
-              </Card>
-            ) : (
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {myApplications.map((app) => (
-                  <Card key={app.id} className="border-border/50 shadow-lg">
+            {filteredMyApplications.length === 0 ? (
+                <Card className="p-12 text-center">
+                  <p className="text-muted-foreground">You haven't applied to any projects yet</p>
+                </Card>
+              ) : (
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {filteredMyApplications.map((app) => (
+                    <Card key={app.id} className="border-border/50 shadow-lg">
                     <CardHeader>
                       <CardTitle className="text-xl">{app.projectName}</CardTitle>
                       <Badge variant={app.accept ? 'default' : 'secondary'}>
@@ -497,14 +544,14 @@ const Projects = () => {
 
           {/* My Requests */}
           <TabsContent value="requests" className="space-y-6">
-            {requests.length === 0 ? (
-              <Card className="p-12 text-center">
-                <p className="text-muted-foreground">No applications yet</p>
-              </Card>
-            ) : (
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {requests.map((request) => (
-                  <Card key={request.id} className="border-border/50 shadow-lg">
+            {filteredRequests.length === 0 ? (
+                <Card className="p-12 text-center">
+                  <p className="text-muted-foreground">No applications yet</p>
+                </Card>
+              ) : (
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {filteredRequests.map((request) => (
+                    <Card key={request.id} className="border-border/50 shadow-lg">
                     <CardHeader>
                       <div className="flex items-center gap-3">
                         <Avatar>
