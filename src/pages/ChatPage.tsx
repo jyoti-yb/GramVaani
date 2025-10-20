@@ -36,7 +36,6 @@ const ChatPage: React.FC = () => {
       groupAPI
         .getAllGroups(user.username)
         .then((res) => setGroups(res.data))
-        .catch((err) => console.error("Error fetching chat groups:", err))
         .finally(() => setLoading(false));
     }
   }, [user]);
@@ -45,13 +44,13 @@ const ChatPage: React.FC = () => {
   useEffect(() => {
     const socket = new SockJS(CHAT_WS_URL);
     const stompClient = over(socket);
-    stompClient.connect({}, () => console.log("✅ Connected to WebSocket"));
+    // 🚫 Disable internal stompjs debug logs
+    stompClient.debug = () => {};
+    stompClient.connect({}, () => {});
     stompClientRef.current = stompClient;
 
     return () => {
-      stompClientRef.current?.disconnect(() =>
-        console.log("❌ Disconnected WebSocket")
-      );
+      stompClientRef.current?.disconnect();
     };
   }, []);
 
@@ -59,10 +58,7 @@ const ChatPage: React.FC = () => {
   useEffect(() => {
     if (!selectedGroup || !stompClientRef.current) return;
 
-    api
-      .get(`/chat/${selectedGroup.groupName}`)
-      .then((res) => setMessages(res.data))
-      .catch((err) => console.error("Error loading messages:", err));
+    api.get(`/chat/${selectedGroup.groupName}`).then((res) => setMessages(res.data));
 
     const subscription = stompClientRef.current.subscribe(
       `/topic/group/${selectedGroup.groupName}`,
@@ -194,7 +190,7 @@ const ChatPage: React.FC = () => {
                         </div>
 
                         {/* 💬 Messages */}
-                        <div className="space-y-3"> {/* adds space between bubbles */}
+                        <div className="space-y-3">
                           {groupedMessages[date].map((msg, i) => {
                             const isMine = msg.sender === user?.username;
                             return (

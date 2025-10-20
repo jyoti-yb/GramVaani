@@ -9,7 +9,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { ideasAPI, profileAPI } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import { Plus, Loader2, Trash2, MessageSquare, Send, Eye, ExternalLink, Github, Linkedin, Phone } from 'lucide-react';
+import {
+  Plus,
+  Loader2,
+  Trash2,
+  MessageSquare,
+  Send,
+  ExternalLink,
+  Github,
+  Linkedin,
+  Phone,
+} from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 
@@ -56,10 +66,7 @@ const Ideas = () => {
   const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
-  const [newIdea, setNewIdea] = useState({
-    title: '',
-    description: '',
-  });
+  const [newIdea, setNewIdea] = useState({ title: '', description: '' });
 
   useEffect(() => {
     loadIdeas();
@@ -68,7 +75,6 @@ const Ideas = () => {
   const loadIdeas = async () => {
     try {
       const response = await ideasAPI.getAll();
-      // Ensure all ideas have required fields with defaults
       const ideasWithDefaults = (response.data || []).map((idea: any) => ({
         ...idea,
         teamLead: idea.teamLead || 'Unknown',
@@ -77,12 +83,11 @@ const Ideas = () => {
         title: idea.title || 'Untitled',
         date: idea.date || new Date().toISOString().split('T')[0],
       }));
-      // Sort ideas by date (newest first)
-      const sortedIdeas = ideasWithDefaults.sort((a: Idea, b: Idea) => 
-        new Date(b.date).getTime() - new Date(a.date).getTime()
+      const sortedIdeas = ideasWithDefaults.sort(
+        (a: Idea, b: Idea) => new Date(b.date).getTime() - new Date(a.date).getTime()
       );
       setIdeas(sortedIdeas);
-    } catch (error) {
+    } catch {
       toast.error('Failed to load ideas');
     } finally {
       setLoading(false);
@@ -106,7 +111,7 @@ const Ideas = () => {
       setShowCreateDialog(false);
       setNewIdea({ title: '', description: '' });
       loadIdeas();
-    } catch (error) {
+    } catch {
       toast.error('Failed to post idea');
     }
   };
@@ -118,7 +123,7 @@ const Ideas = () => {
       await ideasAPI.delete(title);
       toast.success('Idea deleted successfully');
       loadIdeas();
-    } catch (error) {
+    } catch {
       toast.error('Failed to delete idea');
     }
   };
@@ -126,14 +131,14 @@ const Ideas = () => {
   const loadComments = async (title: string) => {
     try {
       const response = await ideasAPI.getComments(title);
-      // Ensure all comments have username field
       const commentsWithDefaults = (response.data || []).map((comment: any) => ({
         ...comment,
         username: comment.username || 'Anonymous',
         comment: comment.comment || '',
       }));
       setComments(commentsWithDefaults);
-    } catch (error) {
+    } catch {
+      toast.error('Failed to load comments');
     }
   };
 
@@ -149,7 +154,7 @@ const Ideas = () => {
       setNewComment('');
       loadComments(selectedIdea.title);
       toast.success('Comment added!');
-    } catch (error) {
+    } catch {
       toast.error('Failed to add comment');
     }
   };
@@ -159,11 +164,9 @@ const Ideas = () => {
 
     try {
       await ideasAPI.deleteComment(id);
-      if (selectedIdea) {
-        loadComments(selectedIdea.title);
-      }
+      if (selectedIdea) loadComments(selectedIdea.title);
       toast.success('Comment deleted');
-    } catch (error) {
+    } catch {
       toast.error('Failed to delete comment');
     }
   };
@@ -172,7 +175,7 @@ const Ideas = () => {
     try {
       const response = await profileAPI.get(username);
       const profileData = response.data;
-      
+
       const profileWithDefaults = {
         ...profileData,
         username: profileData.username || username,
@@ -189,10 +192,10 @@ const Ideas = () => {
         githubLink: profileData.githubLink || '',
         linkedinLink: profileData.linkedinLink || '',
       };
-      
+
       setSelectedProfile(profileWithDefaults);
       setShowProfileDialog(true);
-    } catch (error) {
+    } catch {
       toast.error('Failed to load profile');
     }
   };
@@ -228,10 +231,10 @@ const Ideas = () => {
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {ideas.map((idea) => (
-              <Card key={idea.id} className="border-border/50 shadow-lg hover:shadow-xl transition-all animate-fade-in">
+              <Card key={`idea-${idea.id}-${idea.title}`} className="border-border/50 shadow-lg hover:shadow-xl transition-all animate-fade-in">
                 <CardHeader>
                   <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1">
+                    <div className="flex-1">
                       <CardTitle className="text-xl mb-2">{idea.title}</CardTitle>
                       <div className="flex items-center gap-2">
                         <Avatar className="h-6 w-6">
@@ -326,10 +329,9 @@ const Ideas = () => {
           <DialogHeader>
             <DialogTitle>{selectedIdea?.title}</DialogTitle>
           </DialogHeader>
-          
+
           {selectedIdea && (
             <div className="space-y-6">
-              {/* Idea Details */}
               <div className="p-4 rounded-lg bg-secondary/50">
                 <div className="flex items-center gap-2 mb-3">
                   <Avatar className="h-8 w-8">
@@ -353,7 +355,6 @@ const Ideas = () => {
                 <p className="text-sm whitespace-pre-wrap">{selectedIdea.description}</p>
               </div>
 
-              {/* Add Comment */}
               <div className="space-y-2">
                 <Label>Add Your Validation & Feedback</Label>
                 <div className="flex gap-2">
@@ -371,7 +372,6 @@ const Ideas = () => {
                 </div>
               </div>
 
-              {/* Comments List */}
               <div className="space-y-3">
                 <h3 className="font-semibold">Community Feedback</h3>
                 {comments.length === 0 ? (
@@ -380,10 +380,7 @@ const Ideas = () => {
                   </p>
                 ) : (
                   comments.map((comment) => (
-                    <div
-                      key={comment.id}
-                      className="p-4 rounded-lg bg-secondary/30 border border-border/50"
-                    >
+                    <div key={`comment-${comment.id}-${comment.username}`} className="p-4 rounded-lg bg-secondary/30 border border-border/50">
                       <div className="flex justify-between items-start mb-2">
                         <div className="flex items-center gap-2">
                           <Avatar className="h-6 w-6">
@@ -434,7 +431,9 @@ const Ideas = () => {
                     {(selectedProfile.fullName || 'U').charAt(0)}
                   </AvatarFallback>
                 </Avatar>
-                <h2 className="text-2xl font-bold">{selectedProfile.fullName || 'Unknown User'}</h2>
+                <h2 className="text-2xl font-bold">
+                  {selectedProfile.fullName || 'Unknown User'}
+                </h2>
                 <p className="text-muted-foreground">@{selectedProfile.username || 'unknown'}</p>
               </div>
 
@@ -493,7 +492,9 @@ const Ideas = () => {
                   <h3 className="font-semibold mb-2">Skills</h3>
                   <div className="flex flex-wrap gap-2">
                     {(selectedProfile.skills || []).map((skill, i) => (
-                      <Badge key={i} variant="secondary">{skill}</Badge>
+                      <Badge key={`skill-${i}-${skill}`} variant="secondary">
+                        {skill}
+                      </Badge>
                     ))}
                   </div>
                 </div>
@@ -504,7 +505,9 @@ const Ideas = () => {
                   <h3 className="font-semibold mb-2">Projects</h3>
                   <ul className="list-disc list-inside space-y-1">
                     {(selectedProfile.projects || []).map((project, i) => (
-                      <li key={i} className="text-sm text-muted-foreground">{project}</li>
+                      <li key={`project-${i}-${project}`} className="text-sm text-muted-foreground">
+                        {project}
+                      </li>
                     ))}
                   </ul>
                 </div>
@@ -515,7 +518,9 @@ const Ideas = () => {
                   <h3 className="font-semibold mb-2">Interests</h3>
                   <div className="flex flex-wrap gap-2">
                     {(selectedProfile.interests || []).map((interest, i) => (
-                      <Badge key={i} variant="outline">{interest}</Badge>
+                      <Badge key={`interest-${i}-${interest}`} variant="outline">
+                        {interest}
+                      </Badge>
                     ))}
                   </div>
                 </div>
@@ -526,7 +531,9 @@ const Ideas = () => {
                   <h3 className="font-semibold mb-2">Achievements</h3>
                   <ul className="list-disc list-inside space-y-1">
                     {(selectedProfile.achievements || []).map((achievement, i) => (
-                      <li key={i} className="text-sm text-muted-foreground">{achievement}</li>
+                      <li key={`achievement-${i}-${achievement}`} className="text-sm text-muted-foreground">
+                        {achievement}
+                      </li>
                     ))}
                   </ul>
                 </div>
