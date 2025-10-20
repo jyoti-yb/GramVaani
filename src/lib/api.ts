@@ -93,7 +93,9 @@ export const groupAPI = {
 export const notificationAPI = {
   create: (data) => api.post('/notification/create', null, { params: data }),
   getUserNotifications: (receiver) => api.get(`/notification/user/${receiver}`),
+  deleteNotification: (id: number) => api.delete(`/notification/delete/${id}`), // new
 };
+
 
 
 // Chat API (WebSocket endpoint)
