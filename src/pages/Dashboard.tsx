@@ -4,19 +4,13 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Textarea } from '@/components/ui/textarea';
-import { feedAPI } from '@/lib/api';
+import { feedAPI, profileAPI } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import { MessageCircle, Trash2, Send, Loader2, Eye, ExternalLink, Github, Linkedin, Phone, Plus } from 'lucide-react';
+import { MessageCircle, Trash2, Send, Loader2, ExternalLink, Github, Linkedin, Phone, Plus } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
-import { profileAPI } from '@/lib/api';
 
 interface Feed {
   id: number;
@@ -24,6 +18,8 @@ interface Feed {
   description: string;
   username: string;
   department: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface Comment {
@@ -69,7 +65,6 @@ const Dashboard = () => {
   const loadFeeds = async () => {
     try {
       const response = await feedAPI.getAll();
-      // Sort feeds by id (newer posts have higher ids)
       const sortedFeeds = (response.data || []).sort((a: Feed, b: Feed) => b.id - a.id);
       setFeeds(sortedFeeds);
     } catch (error) {
@@ -84,7 +79,6 @@ const Dashboard = () => {
       toast.error('Please fill in all fields');
       return;
     }
-
     setPostLoading(true);
     try {
       await feedAPI.upload({
@@ -96,7 +90,7 @@ const Dashboard = () => {
       setNewPost({ title: '', description: '' });
       setShowNewPostDialog(false);
       loadFeeds();
-    } catch (error: any) {
+    } catch (error) {
       toast.error('Failed to create post');
     } finally {
       setPostLoading(false);
@@ -105,7 +99,6 @@ const Dashboard = () => {
 
   const handleDeletePost = async (id: number) => {
     if (!confirm('Are you sure you want to delete this post?')) return;
-
     try {
       await feedAPI.delete(id);
       toast.success('Post deleted successfully');
@@ -119,14 +112,11 @@ const Dashboard = () => {
     try {
       const response = await feedAPI.getComments(feedId);
       setComments(response.data);
-    } catch (error) {
-      
-    }
+    } catch (error) {}
   };
 
   const handleAddComment = async () => {
     if (!newComment.trim() || !selectedFeed) return;
-
     try {
       await feedAPI.addComment({
         feedId: selectedFeed.id,
@@ -144,9 +134,7 @@ const Dashboard = () => {
   const handleDeleteComment = async (num: number) => {
     try {
       await feedAPI.deleteComment(num);
-      if (selectedFeed) {
-        loadComments(selectedFeed.id);
-      }
+      if (selectedFeed) loadComments(selectedFeed.id);
       toast.success('Comment deleted');
     } catch (error) {
       toast.error('Failed to delete comment');
@@ -157,7 +145,6 @@ const Dashboard = () => {
     try {
       const response = await profileAPI.get(username);
       const profileData = response.data;
-      
       const profileWithDefaults = {
         ...profileData,
         username: profileData.username || username,
@@ -174,7 +161,6 @@ const Dashboard = () => {
         githubLink: profileData.githubLink || '',
         linkedinLink: profileData.linkedinLink || '',
       };
-      
       setSelectedProfile(profileWithDefaults);
       setShowProfileDialog(true);
     } catch (error) {
@@ -185,7 +171,7 @@ const Dashboard = () => {
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
-      
+
       <div className="container mx-auto px-6 py-8 max-w-5xl">
         {/* Toolbar */}
         <div className="mb-6 flex items-center justify-end">
@@ -209,25 +195,28 @@ const Dashboard = () => {
               <Card key={feed.id} className="border-border/50 shadow-lg hover:shadow-xl transition-shadow animate-fade-in">
                 <CardHeader>
                   <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-3">
-                        <Avatar>
-                          <AvatarFallback className="bg-gradient-primary text-white">
-                            {(feed.username || 'U').charAt(0).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <Button
-                            variant="link"
-                            className="p-0 h-auto font-semibold hover:text-primary"
-                            onClick={() => loadProfile(feed.username)}
-                          >
-                            {feed.username || 'Unknown'}
-                          </Button>
-                          {feed.department && (
-                            <p className="text-sm text-muted-foreground">{feed.department}</p>
-                          )}
-                        </div>
+                    <div className="flex items-center gap-3">
+                      <Avatar>
+                        <AvatarFallback className="bg-gradient-primary text-white">
+                          {(feed.username || 'U').charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <Button
+                          variant="link"
+                          className="p-0 h-auto font-semibold hover:text-primary"
+                          onClick={() => loadProfile(feed.username)}
+                        >
+                          {feed.username || 'Unknown'}
+                        </Button>
+                        {feed.department && <p className="text-sm text-muted-foreground">{feed.department}</p>}
+                        {feed.createdAt && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Posted on {new Date(feed.createdAt).toLocaleString()}
+                          </p>
+                        )}
                       </div>
+                    </div>
                     {feed.username === user?.username && (
                       <Button
                         variant="ghost"
@@ -240,10 +229,12 @@ const Dashboard = () => {
                     )}
                   </div>
                 </CardHeader>
+
                 <CardContent className="space-y-4">
                   <h3 className="text-xl font-bold">{feed.title}</h3>
                   <p className="text-muted-foreground whitespace-pre-wrap">{feed.description}</p>
                 </CardContent>
+
                 <CardFooter className="flex gap-2">
                   <Button
                     variant="ghost"
@@ -309,7 +300,6 @@ const Dashboard = () => {
             <DialogTitle>Comments</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            {/* Add Comment */}
             <div className="flex gap-2">
               <Input
                 placeholder="Write a comment..."
@@ -322,12 +312,9 @@ const Dashboard = () => {
               </Button>
             </div>
 
-            {/* Comments List */}
             <div className="space-y-3">
               {comments.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8">
-                  No comments yet. Be the first to comment!
-                </p>
+                <p className="text-center text-muted-foreground py-8">No comments yet. Be the first to comment!</p>
               ) : (
                 comments.map((comment) => (
                   <div
