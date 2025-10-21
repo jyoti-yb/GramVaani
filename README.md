@@ -67,7 +67,3 @@ npm run dev
 - Mobile-first interface
 
 ## 🏆 Built for OpenAI X NXT Buildathon
-
-This project addresses the critical need for inclusive AI technology in rural India, ensuring that language barriers don't prevent access to essential information and services.
-# ruralai
-# ruralai
