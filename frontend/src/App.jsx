@@ -152,26 +152,19 @@ function App() {
   return (
     <div className="container">
       <div className="header">
-        <h1>🌾 Gram Vaani</h1>
-        <p>AI Voice Assistant for Rural India</p>
-      </div>
-
-      {/* Language Selector */}
-      <div className="language-selector">
-        <label>🌐 Select Language: </label>
-        <select value={language} onChange={(e) => setLanguage(e.target.value)}>
-          <option value="en">English</option>
-          <option value="hi">Hindi</option>
-          <option value="mr">Marathi</option>
-          <option value="bn">Bengali</option>
-          <option value="ta">Tamil</option>
-        </select>
+        <div className="logo">
+          <div className="logo-icon">🌾</div>
+          <div className="logo-text">
+            <h1>Gram Vaani</h1>
+            <p>AI Voice Assistant for Rural India</p>
+          </div>
+        </div>
       </div>
 
       <div className="main-card">
         <div className="input-mode-selector">
           <button className={`mode-button ${inputMode === 'voice' ? 'active' : ''}`} onClick={() => setInputMode('voice')}>🎤 Voice</button>
-          <button className={`mode-button ${inputMode === 'text' ? 'active' : ''}`} onClick={() => setInputMode('text')}>✍️ Text</button>
+          <button className={`mode-button ${inputMode === 'text' ? 'active' : ''}`} onClick={() => setInputMode('text')}>✍ Text</button>
         </div>
 
         {inputMode === 'voice' ? (
@@ -188,24 +181,46 @@ function App() {
         ) : (
           <div className="text-section">
             <textarea value={textInput} onChange={(e) => setTextInput(e.target.value)} placeholder="Type your question here..." className="text-input" rows={3} disabled={isProcessing} />
-            <button className="submit-button" onClick={processText} disabled={isProcessing || !textInput.trim()}>
-              {isProcessing ? <><Loader className="loading" size={16} /> Processing...</> : 'Submit Question'}
-            </button>
+            <div className="text-controls">
+              <button className="submit-button" onClick={processText} disabled={isProcessing || !textInput.trim()}>
+                {isProcessing ? <><Loader className="loading" size={16} /> Processing...</> : 'Submit Question'}
+              </button>
+              <div className="language-selector-inline">
+                <div className="language-icon">🌐</div>
+                <select value={language} onChange={(e) => setLanguage(e.target.value)}>
+                  <option value="en">🇺🇸 English</option>
+                  <option value="hi">🇮🇳 Hindi</option>
+                  <option value="mr">🇮🇳 Marathi</option>
+                  <option value="bn">🇮🇳 Bengali</option>
+                  <option value="ta">🇮🇳 Tamil</option>
+                </select>
+              </div>
+            </div>
           </div>
         )}
 
         {/* Feature buttons */}
         <div className="feature-buttons">
-          <button onClick={getWeather}>🌤️ Check Weather
-            Get real-time weather updates for your area.
+          <button className="feature-card" onClick={getWeather}>
+            <div className="icon">🌤</div>
+            <div className="title">Check Weather</div>
+            <div className="description">Get real-time weather updates for your area.</div>
           </button>
-          <button onClick={getCropPrice}>💰 Crop Prices
-            Get the latest market prices for your crops.
+          <button className="feature-card" onClick={getCropPrice}>
+            <div className="icon">💰</div>
+            <div className="title">Crop Prices</div>
+            <div className="description">Get the latest market prices for your crops.</div>
           </button>
-          <button onClick={getGovSchemes}>🏛️ Govt Schemes
-            Learn about government schemes available to you.
+          <button className="feature-card" onClick={getGovSchemes}>
+            <div className="icon">🏛</div>
+            <div className="title">Govt Schemes</div>
+            <div className="description">Learn about government schemes available to you.</div>
           </button>
-          
+          <button className="feature-card">
+            <div className="icon">🗣</div>
+            <div className="title">Multi-Dialect Support</div>
+            <div className="description">Speak in your local language – Hindi, Telugu, Punjabi, Bhojpuri, and more.</div>
+          </button>
         </div>
 
         {error && <div className="error-message">{error}</div>}
