@@ -61,8 +61,9 @@ function App() {
         transcript: response.data.transcript,
         response_text: response.data.response_text
       })
-      if (response.data.audio_url) {
-        setAudioUrl(`http://localhost:8000${response.data.audio_url}`)
+      if (response.data.audio_data) {
+        const audioBlob = new Blob([Uint8Array.from(atob(response.data.audio_data), c => c.charCodeAt(0))], { type: 'audio/wav' })
+        setAudioUrl(URL.createObjectURL(audioBlob))
       }
     } catch (err) {
       setError('Failed to process audio')
@@ -90,8 +91,12 @@ function App() {
       })
       setResponse({
         transcript: textInput,
-        response_text: response.data
+        response_text: response.data.response_text || response.data
       })
+      if (response.data.audio_data) {
+        const audioBlob = new Blob([Uint8Array.from(atob(response.data.audio_data), c => c.charCodeAt(0))], { type: 'audio/wav' })
+        setAudioUrl(URL.createObjectURL(audioBlob))
+      }
     } catch (err) {
       const errorMessage = err.response?.data?.detail || 'Failed to process text. Please try again.'
       setError(errorMessage)
@@ -231,6 +236,15 @@ function App() {
             <p className="response-text">{response.transcript}</p>
             <h3>💬 Response:</h3>
             <p className="response-text">{response.response_text}</p>
+            {audioUrl && (
+              <div className="audio-controls">
+                <button className="play-button" onClick={playAudio}>
+                  {isPlaying ? <Pause size={20} /> : <Play size={20} />}
+                  {isPlaying ? 'Pause' : 'Play Response'}
+                </button>
+                <audio ref={audioRef} src={audioUrl} onEnded={handleAudioEnded} />
+              </div>
+            )}
           </div>
         )}
       </div>
