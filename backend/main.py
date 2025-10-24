@@ -6,6 +6,8 @@ from openai import AzureOpenAI
 import os
 import tempfile
 import requests
+import azure.cognitiveservices.speech as speechsdk
+import base64
 
 app = FastAPI()
 
@@ -31,6 +33,12 @@ azure_client = AzureOpenAI(
 )
 
 client = azure_client  # alias
+
+# Azure Speech Services configuration
+speech_config = speechsdk.SpeechConfig(
+    subscription="AcO2p9Y3cCtDKiEh3DVKM9iAuQdwwqnKK4yzI368bGqPh3TO6vLEJQQJ99BJACYeBjFXJ3w3AAAYACOGKndq",
+    region="eastus"
+)
 
 # ---------------------- AUDIO PROCESSING ----------------------
 @app.post("/process-audio")
@@ -80,10 +88,20 @@ async def process_audio(file: UploadFile = File(...), language: str = "en"):
         else:
             response_text = "I couldn't understand your audio. Please try speaking more clearly or use the text input option."
 
+        # Generate TTS audio
+        audio_data = None
+        try:
+            synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=None)
+            result = synthesizer.speak_text_async(response_text).get()
+            if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
+                audio_data = base64.b64encode(result.audio_data).decode('utf-8')
+        except Exception as tts_error:
+            print(f"TTS error: {tts_error}")
+
         return JSONResponse({
             "transcript": transcript,
             "response_text": response_text,
-            "audio_url": None
+            "audio_data": audio_data
         })
 
     except Exception as e:
@@ -119,7 +137,20 @@ async def process_text(request: TextRequest):
         response_text = response.choices[0].message.content
         print(f"Text processing successful for: {request.text}")
 
-        return JSONResponse(response_text)
+        # Generate TTS audio
+        audio_data = None
+        try:
+            synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=None)
+            result = synthesizer.speak_text_async(response_text).get()
+            if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
+                audio_data = base64.b64encode(result.audio_data).decode('utf-8')
+        except Exception as tts_error:
+            print(f"TTS error: {tts_error}")
+
+        return JSONResponse({
+            "response_text": response_text,
+            "audio_data": audio_data
+        })
 
     except Exception as e:
         print(f"Text processing error: {e}")
