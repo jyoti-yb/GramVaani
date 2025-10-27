@@ -89,6 +89,9 @@ def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
 
 def get_password_hash(password):
+    # Truncate password to 72 bytes for bcrypt compatibility
+    if len(password.encode('utf-8')) > 72:
+        password = password.encode('utf-8')[:72].decode('utf-8', errors='ignore')
     return pwd_context.hash(password)
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
@@ -145,6 +148,11 @@ async def signup(user: UserSignup):
     try:
         print(f"Signup attempt for: {user.email}")
         
+        # Check if user already exists
+        existing_user = await users_collection.find_one({"email": user.email})
+        if existing_user:
+            raise HTTPException(status_code=400, detail="Email already registered")
+        
         # Simple approach - just try to insert, handle duplicate error
         hashed_password = get_password_hash(user.password)
         user_doc = {
@@ -182,7 +190,17 @@ async def login(user: UserLogin):
     try:
         # Find user
         db_user = await users_collection.find_one({"email": user.email})
-        if not db_user or not verify_password(user.password, db_user["password"]):
+        if not db_user:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        
+        # Verify password with error handling
+        try:
+            password_valid = verify_password(user.password, db_user["password"])
+        except Exception as pwd_error:
+            print(f"Password verification error: {pwd_error}")
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+            
+        if not password_valid:
             raise HTTPException(status_code=401, detail="Invalid credentials")
         
         # Create access token
@@ -362,7 +380,8 @@ async def process_audio(file: UploadFile = File(...), language: str = "en", curr
             with open(temp_file_path, "rb") as audio_file:
                 response = azure_client.audio.transcriptions.create(
                     model="whisper",
-                    file=audio_file
+                    file=audio_file,
+                    language=language if language != 'en' else None
                 )
                 transcript = response.text
                 print(f"Azure Whisper transcription successful: {transcript}")
@@ -514,6 +533,7 @@ async def get_weather(request: WeatherRequest, current_user: dict = Depends(get_
 class CropPriceRequest(BaseModel):
     crop: str
     market: str = "Delhi"
+    language: str = "en"
 
 @app.post("/api/crop-prices")
 async def get_crop_prices(request: CropPriceRequest, current_user: dict = Depends(get_current_user)):
@@ -543,12 +563,13 @@ async def get_crop_prices(request: CropPriceRequest, current_user: dict = Depend
 # ---------------------- GOVERNMENT SCHEMES ----------------------
 class SchemeRequest(BaseModel):
     topic: str
+    language: str = "en"
 
 @app.post("/api/gov-schemes")
 async def get_gov_schemes(request: SchemeRequest, current_user: dict = Depends(get_current_user)):
     try:
         messages = [
-            {"role": "system", "content": "You are a helpful assistant for Indian farmers. Provide info about government schemes related to agriculture in simple terms."},
+            {"role": "system", "content": f"You are a helpful assistant for Indian farmers. Provide info about government schemes related to agriculture in simple terms. Respond in language: {request.language}."},
             {"role": "user", "content": f"Tell me about government schemes related to {request.topic}."}
         ]
         response = azure_client.chat.completions.create(
