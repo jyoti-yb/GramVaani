@@ -1,15 +1,36 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydantic import BaseModel, EmailStr
 from openai import AzureOpenAI
 import os
 import tempfile
 import requests
 import azure.cognitiveservices.speech as speechsdk
 import base64
+from motor.motor_asyncio import AsyncIOMotorClient
+from passlib.context import CryptContext
+import jwt
+from datetime import datetime, timedelta
+from typing import Optional
 
 app = FastAPI()
+
+# MongoDB connection with working credentials
+MONGO_URL = "mongodb+srv://gramvani_user:GramVaani123!@firewall.jchsp.mongodb.net/gramvani?retryWrites=true&w=majority"
+client_mongo = AsyncIOMotorClient(MONGO_URL)
+db = client_mongo.gramvani
+users_collection = db.user
+
+print("MongoDB connection initialized with gramvani_user")
+
+# Security
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+security = HTTPBearer()
+SECRET_KEY = "your-secret-key-here-change-in-production"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 # Configure CORS
 app.add_middleware(
@@ -34,6 +55,229 @@ azure_client = AzureOpenAI(
 
 client = azure_client  # alias
 
+# ---------------------- AUTH MODELS ----------------------
+class UserSignup(BaseModel):
+    email: EmailStr
+    password: str
+    language: str
+    location: str
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class LocationRequest(BaseModel):
+    ip: Optional[str] = None
+
+# ---------------------- AUTH FUNCTIONS ----------------------
+def verify_password(plain_password, hashed_password):
+    return pwd_context.verify(plain_password, hashed_password)
+
+def get_password_hash(password):
+    return pwd_context.hash(password)
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=15)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    try:
+        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        if email is None:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        user = await users_collection.find_one({"email": email})
+        if user is None:
+            raise HTTPException(status_code=401, detail="User not found")
+        return user
+    except jwt.PyJWTError as e:
+        print(f"JWT error: {e}")
+        raise HTTPException(status_code=401, detail="Invalid token")
+    except Exception as e:
+        print(f"Auth error: {e}")
+        raise HTTPException(status_code=401, detail="Authentication failed")
+
+# ---------------------- LOCATION API ----------------------
+@app.get("/api/location")
+async def get_location():
+    try:
+        url = "http://ipapi.co/json/"
+        response = requests.get(url, timeout=5)
+        data = response.json()
+        
+        if response.status_code == 200:
+            return {
+                "city": data.get("city", "Unknown"),
+                "region": data.get("region", "Unknown"),
+                "country": data.get("country_name", "Unknown"),
+                "location": f"{data.get('city', 'Unknown')}, {data.get('region', 'Unknown')}"
+            }
+        else:
+            return {"location": "Location not available"}
+    except Exception as e:
+        print(f"Location API error: {e}")
+        return {"location": "Location not available"}
+
+# ---------------------- AUTH ENDPOINTS ----------------------
+@app.post("/api/signup", response_model=Token)
+async def signup(user: UserSignup):
+    try:
+        print(f"Signup attempt for: {user.email}")
+        
+        # Simple approach - just try to insert, handle duplicate error
+        hashed_password = get_password_hash(user.password)
+        user_doc = {
+            "email": user.email,
+            "password": hashed_password,
+            "language": user.language,
+            "location": user.location,
+            "created_at": datetime.utcnow()
+        }
+        
+        print(f"Inserting user document: {user.email}")
+        result = await users_collection.insert_one(user_doc)
+        print(f"User inserted with ID: {result.inserted_id}")
+        
+        # Create access token
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = create_access_token(
+            data={"sub": user.email}, expires_delta=access_token_expires
+        )
+        
+        print(f"Signup successful for: {user.email}")
+        return {"access_token": access_token, "token_type": "bearer"}
+    except Exception as e:
+        error_msg = str(e)
+        print(f"Signup error details: {type(e).__name__}: {error_msg}")
+        
+        # Handle duplicate email
+        if "duplicate key" in error_msg.lower() or "11000" in error_msg:
+            raise HTTPException(status_code=400, detail="Email already registered")
+        
+        raise HTTPException(status_code=500, detail=f"Registration failed: {error_msg}")
+
+@app.post("/api/login", response_model=Token)
+async def login(user: UserLogin):
+    try:
+        # Find user
+        db_user = await users_collection.find_one({"email": user.email})
+        if not db_user or not verify_password(user.password, db_user["password"]):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        
+        # Create access token
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = create_access_token(
+            data={"sub": user.email}, expires_delta=access_token_expires
+        )
+        
+        return {"access_token": access_token, "token_type": "bearer"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Login error: {e}")
+        raise HTTPException(status_code=500, detail="Login failed")
+
+@app.get("/api/me")
+async def get_me(current_user: dict = Depends(get_current_user)):
+    return {
+        "email": current_user["email"],
+        "language": current_user["language"],
+        "location": current_user["location"]
+    }
+
+# Temporary in-memory storage as fallback
+temp_users = {}
+
+# Test endpoints
+@app.post("/api/test-signup")
+async def test_signup(user: UserSignup):
+    try:
+        print(f"Test signup for: {user.email}")
+        if user.email in temp_users:
+            raise HTTPException(status_code=400, detail="Email already registered")
+        
+        temp_users[user.email] = {
+            "email": user.email,
+            "password": get_password_hash(user.password),
+            "language": user.language,
+            "location": user.location
+        }
+        
+        access_token = create_access_token(data={"sub": user.email})
+        return {"access_token": access_token, "token_type": "bearer"}
+    except Exception as e:
+        print(f"Test signup error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/test-login")
+async def test_login(user: UserLogin):
+    try:
+        if user.email not in temp_users:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        
+        stored_user = temp_users[user.email]
+        if not verify_password(user.password, stored_user["password"]):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        
+        access_token = create_access_token(data={"sub": user.email})
+        return {"access_token": access_token, "token_type": "bearer"}
+    except Exception as e:
+        print(f"Test login error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/test-me")
+async def test_get_me(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    try:
+        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        if email is None or email not in temp_users:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        
+        user = temp_users[email]
+        return {
+            "email": user["email"],
+            "language": user["language"],
+            "location": user["location"]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+@app.get("/api/test-db")
+async def test_database_access():
+    try:
+        test_results = {}
+        
+        # Test current connection
+        try:
+            await db.command("ping")
+            test_results["current_connection"] = "SUCCESS"
+            
+            # Test insert operation
+            test_doc = {"test": "data", "timestamp": datetime.utcnow()}
+            result = await users_collection.insert_one(test_doc)
+            test_results["insert_test"] = f"SUCCESS - ID: {result.inserted_id}"
+            
+            # Clean up test document
+            await users_collection.delete_one({"_id": result.inserted_id})
+            test_results["cleanup"] = "SUCCESS"
+            
+        except Exception as e:
+            test_results["current_connection"] = f"FAILED: {str(e)}"
+        
+        return test_results
+    except Exception as e:
+        return {"error": str(e)}
+
 # Azure Speech Services configuration
 speech_config = speechsdk.SpeechConfig(
     subscription="AcO2p9Y3cCtDKiEh3DVKM9iAuQdwwqnKK4yzI368bGqPh3TO6vLEJQQJ99BJACYeBjFXJ3w3AAAYACOGKndq",
@@ -42,7 +286,7 @@ speech_config = speechsdk.SpeechConfig(
 
 # ---------------------- AUDIO PROCESSING ----------------------
 @app.post("/process-audio")
-async def process_audio(file: UploadFile = File(...), language: str = "en"):
+async def process_audio(file: UploadFile = File(...), language: str = "en", current_user: dict = Depends(get_current_user)):
     temp_file = None
     try:
         # Save audio to temporary file
@@ -122,7 +366,7 @@ class TextRequest(BaseModel):
     language: str = "en"
 
 @app.post("/process-text")
-async def process_text(request: TextRequest):
+async def process_text(request: TextRequest, current_user: dict = Depends(get_current_user)):
     try:
         messages = [
             {"role": "system", "content": f"You are a helpful assistant for rural India focused on farming, weather, crops, and government schemes. Respond in simple, clear language. Use language: {request.language}."},
@@ -164,7 +408,7 @@ class WeatherRequest(BaseModel):
     language: str = "en"
 
 @app.post("/api/weather")
-async def get_weather(request: WeatherRequest):
+async def get_weather(request: WeatherRequest, current_user: dict = Depends(get_current_user)):
     try:
         api_key = os.getenv("OPENWEATHER_API_KEY", "99f42bfabc8ad962157251343277ea08")
         url = f"http://api.openweathermap.org/data/2.5/weather?q={request.city}&appid={api_key}&units=metric&lang={request.language}"
@@ -191,7 +435,7 @@ class CropPriceRequest(BaseModel):
     market: str = "Delhi"
 
 @app.post("/api/crop-prices")
-async def get_crop_prices(request: CropPriceRequest):
+async def get_crop_prices(request: CropPriceRequest, current_user: dict = Depends(get_current_user)):
     try:
         # Simulated response
         response_text = f"The latest price for {request.crop} in {request.market} is ₹{round(2500 + hash(request.crop) % 500)} per quintal."
@@ -206,7 +450,7 @@ class SchemeRequest(BaseModel):
     topic: str
 
 @app.post("/api/gov-schemes")
-async def get_gov_schemes(request: SchemeRequest):
+async def get_gov_schemes(request: SchemeRequest, current_user: dict = Depends(get_current_user)):
     try:
         messages = [
             {"role": "system", "content": "You are a helpful assistant for Indian farmers. Provide info about government schemes related to agriculture in simple terms."},
