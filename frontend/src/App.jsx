@@ -226,11 +226,11 @@ function App() {
           headers: { 'Authorization': `Bearer ${token}` }
         })
       } else if (modalType === 'crop') {
-        res = await axios.post('http://localhost:8000/api/crop-prices', { crop: modalInput }, {
+        res = await axios.post('http://localhost:8000/api/crop-prices', { crop: modalInput, language }, {
           headers: { 'Authorization': `Bearer ${token}` }
         })
       } else if (modalType === 'schemes') {
-        res = await axios.post('http://localhost:8000/api/gov-schemes', { topic: modalInput }, {
+        res = await axios.post('http://localhost:8000/api/gov-schemes', { topic: modalInput, language }, {
           headers: { 'Authorization': `Bearer ${token}` }
         })
       }
@@ -310,6 +310,16 @@ function App() {
               {isRecording ? "🎤 Listening... Click to stop" :
                 isProcessing ? "🤖 Processing your request..." :
                   "👆 Click to speak in your local dialect"}
+            </div>
+            <div className="language-selector-inline">
+              <div className="language-icon">🌐</div>
+              <select value={language} onChange={(e) => setLanguage(e.target.value)}>
+                <option value="en">🇺🇸 English</option>
+                <option value="hi">🇮🇳 Hindi</option>
+                <option value="mr">🇮🇳 Marathi</option>
+                <option value="bn">🇮🇳 Bengali</option>
+                <option value="ta">🇮🇳 Tamil</option>
+              </select>
             </div>
           </div>
         ) : (
