@@ -1,8 +1,11 @@
-import React, { useState, useRef } from 'react'
-import { Mic, MicOff, Play, Pause, Loader } from 'lucide-react'
+import React, { useState, useRef, useEffect } from 'react'
+import { Mic, MicOff, Play, Pause, Loader, LogOut } from 'lucide-react'
 import axios from 'axios'
+import Auth from './Auth'
 
 function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [user, setUser] = useState(null)
   const [isRecording, setIsRecording] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [response, setResponse] = useState('')
@@ -12,10 +15,56 @@ function App() {
   const [textInput, setTextInput] = useState('')
   const [inputMode, setInputMode] = useState('voice')
   const [language, setLanguage] = useState('en')
+  const [showModal, setShowModal] = useState(false)
+  const [modalType, setModalType] = useState('')
+  const [modalInput, setModalInput] = useState('')
 
   const mediaRecorderRef = useRef(null)
   const audioRef = useRef(null)
   const chunksRef = useRef([])
+
+  useEffect(() => {
+    checkAuthStatus()
+  }, [])
+
+  const checkAuthStatus = async () => {
+    const token = localStorage.getItem('token')
+    if (token) {
+      try {
+        const response = await axios.get('http://localhost:8000/api/me', {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        setUser(response.data)
+        setLanguage(response.data.language)
+        setIsAuthenticated(true)
+      } catch (error) {
+        localStorage.removeItem('token')
+        setIsAuthenticated(false)
+      }
+    }
+  }
+
+  const handleLogin = async (token) => {
+    try {
+      const response = await axios.get('http://localhost:8000/api/me', {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      setUser(response.data)
+      setLanguage(response.data.language)
+      setIsAuthenticated(true)
+    } catch (error) {
+      localStorage.removeItem('token')
+    }
+  }
+
+  const handleLogout = () => {
+    localStorage.removeItem('token')
+    setIsAuthenticated(false)
+    setUser(null)
+    setResponse('')
+    setError('')
+    setAudioUrl(null)
+  }
 
   const startRecording = async () => {
     try {
@@ -51,11 +100,15 @@ function App() {
     setIsProcessing(true)
     setError('')
     try {
+      const token = localStorage.getItem('token')
       const formData = new FormData()
       formData.append('file', audioBlob)
       formData.append('language', language)
       const response = await axios.post('http://localhost:8000/process-audio', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+        headers: { 
+          'Content-Type': 'multipart/form-data',
+          'Authorization': `Bearer ${token}`
+        },
       })
       setResponse({
         transcript: response.data.transcript,
@@ -83,11 +136,15 @@ function App() {
     setResponse('')
     setAudioUrl(null)
     try {
+      const token = localStorage.getItem('token')
       const response = await axios.post('http://localhost:8000/process-text', {
         text: textInput.trim(),
         language
       }, {
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
       })
       setResponse({
         transcript: textInput,
@@ -120,38 +177,50 @@ function App() {
 
   const handleAudioEnded = () => setIsPlaying(false)
 
-  // -------------------- New Feature Handlers --------------------
-  const getWeather = async () => {
-    const city = prompt("Enter your city:")
-    if (!city) return
+  // -------------------- Modal Handlers --------------------
+  const openModal = (type) => {
+    setModalType(type)
+    setModalInput('')
+    setShowModal(true)
+  }
+
+  const closeModal = () => {
+    setShowModal(false)
+    setModalInput('')
+  }
+
+  const handleModalSubmit = async () => {
+    if (!modalInput.trim()) return
+    setShowModal(false)
+    setIsProcessing(true)
+    
     try {
-      const res = await axios.post('http://localhost:8000/api/weather', { city, language })
-      setResponse({ transcript: city, response_text: res.data.text })
+      const token = localStorage.getItem('token')
+      let res
+      if (modalType === 'weather') {
+        res = await axios.post('http://localhost:8000/api/weather', { city: modalInput, language }, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+      } else if (modalType === 'crop') {
+        res = await axios.post('http://localhost:8000/api/crop-prices', { crop: modalInput }, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+      } else if (modalType === 'schemes') {
+        res = await axios.post('http://localhost:8000/api/gov-schemes', { topic: modalInput }, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+      }
+      setResponse({ transcript: modalInput, response_text: res.data.text })
     } catch {
-      setError("Unable to fetch weather.")
+      setError(`Unable to fetch ${modalType} information.`)
+    } finally {
+      setIsProcessing(false)
+      setModalInput('')
     }
   }
 
-  const getCropPrice = async () => {
-    const crop = prompt("Enter crop name:")
-    if (!crop) return
-    try {
-      const res = await axios.post('http://localhost:8000/api/crop-prices', { crop })
-      setResponse({ transcript: crop, response_text: res.data.text })
-    } catch {
-      setError("Unable to fetch crop prices.")
-    }
-  }
-
-  const getGovSchemes = async () => {
-    const topic = prompt("Enter topic (e.g., irrigation, fertilizer):")
-    if (!topic) return
-    try {
-      const res = await axios.post('http://localhost:8000/api/gov-schemes', { topic })
-      setResponse({ transcript: topic, response_text: res.data.text })
-    } catch {
-      setError("Unable to fetch government schemes.")
-    }
+  if (!isAuthenticated) {
+    return <Auth onLogin={handleLogin} />
   }
 
   return (
@@ -162,6 +231,15 @@ function App() {
           <div className="logo-text">
             <h1>Gram Vaani</h1>
             <p>AI Voice Assistant for Rural India</p>
+          </div>
+          <div className="user-info">
+            <div className="user-details">
+              <span className="user-email">{user?.email}</span>
+              <span className="user-location">📍 {user?.location}</span>
+            </div>
+            <button onClick={handleLogout} className="logout-btn">
+              <LogOut size={20} />
+            </button>
           </div>
         </div>
       </div>
@@ -206,17 +284,17 @@ function App() {
 
         {/* Feature buttons */}
         <div className="feature-buttons">
-          <button className="feature-card" onClick={getWeather}>
+          <button className="feature-card" onClick={() => openModal('weather')}>
             <div className="icon">🌤</div>
             <div className="title">Check Weather</div>
             <div className="description">Get real-time weather updates for your area.</div>
           </button>
-          <button className="feature-card" onClick={getCropPrice}>
+          <button className="feature-card" onClick={() => openModal('crop')}>
             <div className="icon">💰</div>
             <div className="title">Crop Prices</div>
             <div className="description">Get the latest market prices for your crops.</div>
           </button>
-          <button className="feature-card" onClick={getGovSchemes}>
+          <button className="feature-card" onClick={() => openModal('schemes')}>
             <div className="icon">🏛</div>
             <div className="title">Govt Schemes</div>
             <div className="description">Learn about government schemes available to you.</div>
@@ -248,6 +326,45 @@ function App() {
           </div>
         )}
       </div>
+
+      {/* Modal */}
+      {showModal && (
+        <div className="modal-overlay" onClick={closeModal}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>
+                {modalType === 'weather' && '🌤 Weather Information'}
+                {modalType === 'crop' && '💰 Crop Prices'}
+                {modalType === 'schemes' && '🏛 Government Schemes'}
+              </h3>
+              <button className="close-button" onClick={closeModal}>×</button>
+            </div>
+            <div className="modal-body">
+              <label>
+                {modalType === 'weather' && 'Enter your city:'}
+                {modalType === 'crop' && 'Enter crop name:'}
+                {modalType === 'schemes' && 'Enter topic (e.g., irrigation, fertilizer):'}
+              </label>
+              <input
+                type="text"
+                value={modalInput}
+                onChange={(e) => setModalInput(e.target.value)}
+                placeholder={
+                  modalType === 'weather' ? 'e.g., Delhi, Mumbai' :
+                  modalType === 'crop' ? 'e.g., Rice, Wheat' :
+                  'e.g., Irrigation, Seeds'
+                }
+                onKeyPress={(e) => e.key === 'Enter' && handleModalSubmit()}
+                autoFocus
+              />
+            </div>
+            <div className="modal-footer">
+              <button className="cancel-button" onClick={closeModal}>Cancel</button>
+              <button className="submit-button" onClick={handleModalSubmit} disabled={!modalInput.trim()}>Get Information</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
