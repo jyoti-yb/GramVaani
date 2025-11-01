@@ -38,8 +38,9 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 allowed_origins = [
     "http://localhost:3000",
     "http://localhost:5173",
-    "https://gramvaani-frontend.onrender.com",  # Replace with your frontend URL
-    "https://your-custom-domain.com"  # Add your custom domain if any
+    "https://gramvaani-frontend.onrender.com",  # Your actual frontend URL
+    "https://ruralai-frontend.onrender.com",   # Alternative frontend URL
+    "*"  # Allow all origins for now (change in production)
 ]
 
 app.add_middleware(
