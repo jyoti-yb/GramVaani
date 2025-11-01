@@ -14,7 +14,15 @@ from typing import Optional
 app = FastAPI()
 
 # In-memory storage (temporary for deployment)
-users_db = {}
+users_db = {
+    "test@example.com": {
+        "email": "test@example.com",
+        "password": "$2b$12$LQv3c1yqBwlVHpPjrCyeNOSBKtdXRWWM4fowHpzs4Cdquzk5p6tXO",  # password123
+        "language": "en",
+        "location": "Delhi, India",
+        "created_at": datetime.utcnow()
+    }
+}
 queries_db = []
 
 # Security
@@ -111,7 +119,11 @@ async def root():
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "users": len(users_db)}
+    return {
+        "status": "healthy", 
+        "users": len(users_db),
+        "test_user_exists": "test@example.com" in users_db
+    }
 
 @app.post("/api/signup", response_model=Token)
 async def signup(user: UserSignup):
