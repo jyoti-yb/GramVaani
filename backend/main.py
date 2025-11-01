@@ -125,6 +125,90 @@ async def health():
         "test_user_exists": "test@example.com" in users_db
     }
 
+@app.get("/api/location")
+async def get_location():
+    try:
+        url = "http://ipapi.co/json/"
+        response = requests.get(url, timeout=5)
+        data = response.json()
+        
+        if response.status_code == 200:
+            return {
+                "city": data.get("city", "Unknown"),
+                "region": data.get("region", "Unknown"),
+                "country": data.get("country_name", "Unknown"),
+                "location": f"{data.get('city', 'Unknown')}, {data.get('region', 'Unknown')}"
+            }
+        else:
+            return {"location": "Location not available"}
+    except Exception as e:
+        print(f"Location API error: {e}")
+        return {"location": "Delhi, India"}
+
+class ReverseGeocodeRequest(BaseModel):
+    latitude: float
+    longitude: float
+
+@app.post("/api/reverse-geocode")
+async def reverse_geocode(request: ReverseGeocodeRequest):
+    try:
+        url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={request.latitude}&lon={request.longitude}&zoom=18&addressdetails=1"
+        
+        headers = {
+            'User-Agent': 'GramVaani-App/1.0 (contact@gramvaani.com)'
+        }
+        
+        response = requests.get(url, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            
+            if 'address' in data:
+                address_parts = data['address']
+                
+                village = address_parts.get('village', '')
+                town = address_parts.get('town', '')
+                city = address_parts.get('city', '')
+                district = address_parts.get('state_district', '')
+                state = address_parts.get('state', '')
+                postcode = address_parts.get('postcode', '')
+                
+                address_components = []
+                
+                if village:
+                    address_components.append(village)
+                elif town:
+                    address_components.append(town)
+                elif city:
+                    address_components.append(city)
+                    
+                if district and district not in address_components:
+                    address_components.append(district)
+                    
+                if state:
+                    address_components.append(state)
+                    
+                if postcode:
+                    address_components.append(postcode)
+                
+                precise_address = ', '.join(filter(None, address_components))
+                
+                return {
+                    "address": precise_address,
+                    "coordinates": {
+                        "latitude": request.latitude,
+                        "longitude": request.longitude
+                    }
+                }
+            else:
+                return {"address": f"Coordinates: {request.latitude:.4f}, {request.longitude:.4f}"}
+        else:
+            return {"address": f"Coordinates: {request.latitude:.4f}, {request.longitude:.4f}"}
+            
+    except Exception as e:
+        print(f"Reverse geocoding error: {e}")
+        return {"address": f"Coordinates: {request.latitude:.4f}, {request.longitude:.4f}"}
+
 @app.post("/api/signup", response_model=Token)
 async def signup(user: UserSignup):
     try:
