@@ -24,9 +24,17 @@ SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-here")
 ALGORITHM = "HS256"
 
 # CORS
+allowed_origins = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "https://lazypandaa.github.io",
+    "https://gramvaani-frontend.onrender.com",
+    "*"  # Allow all for now
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
