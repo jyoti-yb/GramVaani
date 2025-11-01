@@ -34,11 +34,19 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 # Configure CORS
+# Configure CORS for production
+allowed_origins = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "https://gramvaani-frontend.onrender.com",  # Replace with your frontend URL
+    "https://your-custom-domain.com"  # Add your custom domain if any
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
 
