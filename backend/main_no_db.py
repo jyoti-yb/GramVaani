@@ -122,7 +122,8 @@ async def health():
     return {
         "status": "healthy", 
         "users": len(users_db),
-        "test_user_exists": "test@example.com" in users_db
+        "test_user_exists": "test@example.com" in users_db,
+        "available_users": list(users_db.keys())
     }
 
 @app.get("/api/location")
@@ -235,10 +236,15 @@ async def signup(user: UserSignup):
 async def login(user: UserLogin):
     try:
         print(f"Login attempt for: {user.email}")
+        print(f"Available users: {list(users_db.keys())}")
+        
         db_user = users_db.get(user.email)
         if not db_user:
             print(f"User not found: {user.email}")
             raise HTTPException(status_code=401, detail="Invalid credentials")
+        
+        print(f"Found user: {db_user['email']}")
+        print(f"Password verification for {user.email}...")
         
         if not verify_password(user.password, db_user["password"]):
             print(f"Invalid password for: {user.email}")
