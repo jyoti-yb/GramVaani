@@ -10,20 +10,20 @@ from passlib.context import CryptContext
 import PyJWT as jwt
 from datetime import datetime, timedelta
 from typing import Optional
+from motor.motor_asyncio import AsyncIOMotorClient
+from bson import ObjectId
+import asyncio
 
 app = FastAPI()
 
-# In-memory storage (temporary for deployment)
-users_db = {
-    "test@example.com": {
-        "email": "test@example.com",
-        "password": "$2b$12$LQv3c1yqBwlVHpPjrCyeNOSBKtdXRWWM4fowHpzs4Cdquzk5p6tXO",  # password123
-        "language": "en",
-        "location": "Delhi, India",
-        "created_at": datetime.utcnow()
-    }
-}
-queries_db = []
+# MongoDB connection with working credentials
+MONGO_URL = os.getenv("MONGO_URL", "mongodb+srv://gramvani_user:GramVaani123!@firewall.jchsp.mongodb.net/gramvani?retryWrites=true&w=majority")
+client_mongo = AsyncIOMotorClient(MONGO_URL)
+db = client_mongo.gramvani
+users_collection = db.user
+user_queries_collection = db.user_queries
+
+print("MongoDB connection initialized with gramvani_user")
 
 # Security
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -37,7 +37,7 @@ allowed_origins = [
     "http://localhost:5173",
     "https://lazypandaa.github.io",
     "https://eshwarkrishna.me",
-    "*"  # Allow all for now
+    "*"
 ]
 
 app.add_middleware(
@@ -87,6 +87,10 @@ class SchemeRequest(BaseModel):
     topic: str
     language: str = "en"
 
+class ReverseGeocodeRequest(BaseModel):
+    latitude: float
+    longitude: float
+
 # Auth functions
 def get_password_hash(password):
     return pwd_context.hash(password)
@@ -104,7 +108,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     try:
         payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
         email = payload.get("sub")
-        user = users_db.get(email)
+        user = await users_collection.find_one({"email": email})
         if user is None:
             raise HTTPException(status_code=401, detail="User not found")
         return user
@@ -112,18 +116,61 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         print(f"Auth error: {e}")
         raise HTTPException(status_code=401, detail="Invalid token")
 
+# Database initialization
+async def init_db():
+    try:
+        # Test connection
+        await client_mongo.admin.command('ping')
+        print("MongoDB connection successful")
+        
+        # Create indexes
+        await users_collection.create_index("email", unique=True)
+        await user_queries_collection.create_index("user_email")
+        
+        # Create test user if not exists
+        test_user = await users_collection.find_one({"email": "test@example.com"})
+        if not test_user:
+            hashed_password = get_password_hash("password123")
+            await users_collection.insert_one({
+                "email": "test@example.com",
+                "password": hashed_password,
+                "language": "en",
+                "location": "Delhi, India",
+                "created_at": datetime.utcnow()
+            })
+            print("Test user created")
+    except Exception as e:
+        print(f"MongoDB connection failed: {e}")
+        raise
+
+@app.on_event("startup")
+async def startup_event():
+    await init_db()
+
 # Routes
 @app.get("/")
 async def root():
-    return {"message": "Gram Vaani API is running"}
+    return {"message": "Gram Vaani API with MongoDB is running"}
 
 @app.get("/health")
 async def health():
-    return {
-        "status": "healthy", 
-        "users": len(users_db),
-        "test_user_exists": "test@example.com" in users_db
-    }
+    try:
+        await client_mongo.admin.command('ping')
+        user_count = await users_collection.count_documents({})
+        test_user_exists = await users_collection.find_one({"email": "test@example.com"}) is not None
+        
+        return {
+            "status": "healthy",
+            "database": "connected",
+            "users": user_count,
+            "test_user_exists": test_user_exists
+        }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "database": "disconnected",
+            "error": str(e)
+        }
 
 @app.get("/api/location")
 async def get_location():
@@ -144,10 +191,6 @@ async def get_location():
     except Exception as e:
         print(f"Location API error: {e}")
         return {"location": "Delhi, India"}
-
-class ReverseGeocodeRequest(BaseModel):
-    latitude: float
-    longitude: float
 
 @app.post("/api/reverse-geocode")
 async def reverse_geocode(request: ReverseGeocodeRequest):
@@ -212,17 +255,20 @@ async def reverse_geocode(request: ReverseGeocodeRequest):
 @app.post("/api/signup", response_model=Token)
 async def signup(user: UserSignup):
     try:
-        if user.email in users_db:
+        existing_user = await users_collection.find_one({"email": user.email})
+        if existing_user:
             raise HTTPException(status_code=400, detail="Email already registered")
         
         hashed_password = get_password_hash(user.password)
-        users_db[user.email] = {
+        user_doc = {
             "email": user.email,
             "password": hashed_password,
             "language": user.language,
             "location": user.location,
             "created_at": datetime.utcnow()
         }
+        
+        await users_collection.insert_one(user_doc)
         
         access_token = create_access_token(data={"sub": user.email})
         return {"access_token": access_token, "token_type": "bearer"}
@@ -235,7 +281,7 @@ async def signup(user: UserSignup):
 async def login(user: UserLogin):
     try:
         print(f"Login attempt for: {user.email}")
-        db_user = users_db.get(user.email)
+        db_user = await users_collection.find_one({"email": user.email})
         if not db_user:
             print(f"User not found: {user.email}")
             raise HTTPException(status_code=401, detail="Invalid credentials")
@@ -278,9 +324,9 @@ async def process_text(request: TextRequest, current_user: dict = Depends(get_cu
         
         response_text = response.choices[0].message.content
         
-        # Log query
-        queries_db.append({
-            "user": current_user["email"],
+        # Log query to MongoDB
+        await user_queries_collection.insert_one({
+            "user_email": current_user["email"],
             "query": request.text,
             "response": response_text,
             "timestamp": datetime.utcnow()

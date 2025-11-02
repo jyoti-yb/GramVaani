@@ -7,7 +7,7 @@ from openai import AzureOpenAI
 import os
 import requests
 from passlib.context import CryptContext
-import jwt
+import PyJWT as jwt
 from datetime import datetime, timedelta
 from typing import Optional
 
