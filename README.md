@@ -63,9 +63,6 @@ Gram Vaani evolves from a voice assistant into a community-powered agricultural 
 
 - `design.md` – System architecture  
 - `requirements.md` – Product requirements  
-- `architecture/` – Architecture assets  
-- `backend/` – Core services  
-- `frontend/` – Interaction prototypes  
 
 ## Submission
 
