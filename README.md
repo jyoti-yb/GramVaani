@@ -6,8 +6,7 @@ Hello everyone, we are **Team RuntimeTerror404**, building **Gram Vaani** for fa
 Gram Vaani is a voice-first AI system that delivers localized agricultural guidance to rural farmers using basic phones.  
 It combines farmer voice input, community reports, weather signals, and AI reasoning to generate trusted, explainable advisories in local languages.
 
-<img width="1600" height="1000" alt="image" src="https://github.com/user-attachments/assets/157222e3-1399-4e6e-b612-6fc47b3266c9" />
-
+![WhatsApp Image 2026-02-26 at 12 52 42 PM](https://github.com/user-attachments/assets/f80faaa8-4127-4f36-97a0-a9f74eb9bc1d)
 
 ## Problem
 
