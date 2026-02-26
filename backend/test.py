@@ -1,46 +1,26 @@
-from openai import AzureOpenAI
+import boto3
 
-# ========================
-# Configuration
-# ========================
-endpoint = "https://azadj-mh00wimr-eastus2.cognitiveservices.azure.com/"
-deployment_name = "gpt35"  # Name of your deployed model
-api_version = "2024-12-01-preview"
-subscription_key = "CAeNSw3Kjc9b3CzNcyDOaNGCaStBqL9dmg1j9cU4RIVqNILKSMnVJQQJ99BJACHYHv6XJ3w3AAAAACOG6dVR"  # <-- Replace with your actual API key
 
-# ========================
-# Initialize client
-# ========================
-client = AzureOpenAI(
-    azure_endpoint=endpoint,
-    api_key=subscription_key,
-    api_version=api_version
-)
+def main() -> None:
+    polly = boto3.client("polly", region_name="ap-south-1")
 
-# ========================
-# Prepare messages
-# ========================
-messages = [
-    {"role": "system", "content": "You are a helpful assistant."},
-    {"role": "user", "content": "I am going to Paris, what should I see?"}
-]
-
-# ========================
-# Make API call
-# ========================
-try:
-    response = client.chat.completions.create(
-        model=deployment_name,
-        messages=messages,
-        max_tokens=4096,
-        temperature=1.0,
-        top_p=1.0
+    response = polly.synthesize_speech(
+        Text="नमस्ते, यह ग्रामवाणी परीक्षण है",
+        OutputFormat="mp3",
+        VoiceId="Aditi",
+        Engine="neural",
     )
 
-    # Print the assistant's reply
-    print("Assistant response:")
-    print(response.choices[0].message.content)
+    audio_stream = response.get("AudioStream")
+    if audio_stream is None:
+        raise RuntimeError("No AudioStream returned from Amazon Polly.")
 
-except Exception as e:
-    print("Error calling Azure OpenAI API:", str(e))
+    with open("output.mp3", "wb") as file_handle:
+        file_handle.write(audio_stream.read())
+
+    print("Audio generated successfully.")
+
+
+if __name__ == "__main__":
+    main()
 
