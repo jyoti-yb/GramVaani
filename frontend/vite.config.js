@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
-  base: '/ruralai/',
+  base: '/',
   server: {
     port: 5173,
     host: true
@@ -21,7 +21,7 @@ export default defineConfig({
     }
   },
   define: {
-    'process.env.VITE_API_URL': JSON.stringify(process.env.VITE_API_URL || 'https://gramvaani-backend.onrender.com')
+    'process.env.VITE_API_URL': JSON.stringify(process.env.VITE_API_URL || 'http://localhost:8000')
   },
   envPrefix: 'VITE_'
 })

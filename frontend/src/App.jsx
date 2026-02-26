@@ -26,6 +26,68 @@ function App() {
   const mediaRecorderRef = useRef(null)
   const audioRef = useRef(null)
   const chunksRef = useRef([])
+  const recorderMimeTypeRef = useRef('')
+
+  const encodeWav = (audioBuffer) => {
+    const numChannels = 1
+    const sampleRate = audioBuffer.sampleRate
+    const format = 1
+    const bitDepth = 16
+
+    const samples = audioBuffer.getChannelData(0)
+    const blockAlign = numChannels * (bitDepth / 8)
+    const byteRate = sampleRate * blockAlign
+    const dataSize = samples.length * (bitDepth / 8)
+
+    const buffer = new ArrayBuffer(44 + dataSize)
+    const view = new DataView(buffer)
+
+    const writeString = (offset, str) => {
+      for (let i = 0; i < str.length; i += 1) {
+        view.setUint8(offset + i, str.charCodeAt(i))
+      }
+    }
+
+    writeString(0, 'RIFF')
+    view.setUint32(4, 36 + dataSize, true)
+    writeString(8, 'WAVE')
+    writeString(12, 'fmt ')
+    view.setUint32(16, 16, true)
+    view.setUint16(20, format, true)
+    view.setUint16(22, numChannels, true)
+    view.setUint32(24, sampleRate, true)
+    view.setUint32(28, byteRate, true)
+    view.setUint16(32, blockAlign, true)
+    view.setUint16(34, bitDepth, true)
+    writeString(36, 'data')
+    view.setUint32(40, dataSize, true)
+
+    let offset = 44
+    for (let i = 0; i < samples.length; i += 1, offset += 2) {
+      let s = Math.max(-1, Math.min(1, samples[i]))
+      s = s < 0 ? s * 0x8000 : s * 0x7fff
+      view.setInt16(offset, s, true)
+    }
+
+    return buffer
+  }
+
+  const convertToWav = async (audioBlob) => {
+    const arrayBuffer = await audioBlob.arrayBuffer()
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)()
+    const decodedBuffer = await audioContext.decodeAudioData(arrayBuffer)
+
+    const targetSampleRate = 16000
+    const offlineContext = new OfflineAudioContext(1, Math.ceil(decodedBuffer.duration * targetSampleRate), targetSampleRate)
+    const source = offlineContext.createBufferSource()
+    source.buffer = decodedBuffer
+    source.connect(offlineContext.destination)
+    source.start(0)
+    const renderedBuffer = await offlineContext.startRendering()
+
+    const wavBuffer = encodeWav(renderedBuffer)
+    return new Blob([wavBuffer], { type: 'audio/wav' })
+  }
 
   useEffect(() => {
     checkAuthStatus()
@@ -76,14 +138,28 @@ function App() {
       setResponse('')
       setAudioUrl(null)
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      mediaRecorderRef.current = new MediaRecorder(stream)
+
+      const preferredTypes = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/ogg;codecs=opus',
+        'audio/ogg'
+      ]
+      const supportedType = preferredTypes.find((type) => MediaRecorder.isTypeSupported(type))
+      const recorderOptions = supportedType ? { mimeType: supportedType } : undefined
+
+      mediaRecorderRef.current = recorderOptions ? new MediaRecorder(stream, recorderOptions) : new MediaRecorder(stream)
+      recorderMimeTypeRef.current = mediaRecorderRef.current.mimeType || supportedType || ''
       chunksRef.current = []
       mediaRecorderRef.current.ondataavailable = (event) => {
         chunksRef.current.push(event.data)
       }
       mediaRecorderRef.current.onstop = async () => {
-        const audioBlob = new Blob(chunksRef.current, { type: 'audio/wav' })
-        await processAudio(audioBlob)
+        const chunkType = chunksRef.current[0]?.type
+        const mimeType = recorderMimeTypeRef.current || chunkType || 'audio/webm'
+        const audioBlob = new Blob(chunksRef.current, { type: mimeType })
+        const wavBlob = await convertToWav(audioBlob)
+        await processAudio(wavBlob)
         stream.getTracks().forEach(track => track.stop())
       }
       mediaRecorderRef.current.start()
@@ -108,6 +184,8 @@ function App() {
       const formData = new FormData()
       formData.append('file', audioBlob)
       formData.append('language', language)
+      formData.set('file', audioBlob, 'recording.wav')
+
       const response = await axios.post(`${API_URL}/process-audio`, formData, {
         headers: { 
           'Content-Type': 'multipart/form-data',
@@ -131,8 +209,9 @@ function App() {
         }, 100)
       }
     } catch (err) {
-      setError('Failed to process audio')
-      console.error(err)
+      const errorMessage = err.response?.data?.detail || 'Failed to process audio'
+      setError(errorMessage)
+      console.error('Error processing audio:', err)
     } finally {
       setIsProcessing(false)
     }
