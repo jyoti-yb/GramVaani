@@ -7,6 +7,7 @@ from openai import AzureOpenAI
 import os
 import base64
 import azure.cognitiveservices.speech as speechsdk
+import boto3
 from dotenv import load_dotenv
 import requests
 import jwt
@@ -15,6 +16,7 @@ from typing import Optional
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
 import asyncio
+from transcribe_service import TranscribeService
 
 load_dotenv()
 
@@ -58,36 +60,64 @@ azure_client = AzureOpenAI(
     api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview")
 )
 
+# Amazon Polly
+polly_client = boto3.client("polly", region_name="ap-south-1")
+
+# Amazon Transcribe
+transcribe_service = TranscribeService()
+
 LANGUAGE_TO_LOCALE = {
-    "en": "en-US",
+    "en": "en-IN",
     "hi": "hi-IN",
-    "mr": "mr-IN",
-    "bn": "bn-IN",
     "ta": "ta-IN",
     "te": "te-IN",
+    "kn": "kn-IN",
+    "ml": "ml-IN",
+    "bn": "bn-IN",
+    "gu": "gu-IN",
+    "mr": "mr-IN",
+}
+
+LANGUAGE_TO_POLLY_VOICE = {
+    "en": "Joanna",
+    "hi": "Aditi",
+    "ta": "Aditi",
+    "te": "Aditi",
+    "kn": "Aditi",
+    "ml": "Aditi",
+    "bn": "Aditi",
+    "gu": "Aditi",
+    "mr": "Aditi",
+}
+
+LANGUAGE_NAMES = {
+    "en": "English",
+    "hi": "Hindi",
+    "ta": "Tamil",
+    "te": "Telugu",
+    "kn": "Kannada",
+    "ml": "Malayalam",
+    "bn": "Bengali",
+    "gu": "Gujarati",
+    "mr": "Marathi",
 }
 
 def synthesize_speech(text: str, language: str) -> Optional[str]:
-    speech_key = os.getenv("AZURE_SPEECH_KEY")
-    speech_region = os.getenv("AZURE_SPEECH_REGION")
-    if not speech_key or not speech_region or not text:
+    if not text:
         return None
-
-    locale = LANGUAGE_TO_LOCALE.get(language, "en-US")
-    speech_config = speechsdk.SpeechConfig(subscription=speech_key, region=speech_region)
-    speech_config.speech_synthesis_language = locale
-
-    synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=None)
-    result = synthesizer.speak_text_async(text).get()
-
-    if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
-        return base64.b64encode(result.audio_data).decode("utf-8")
-
-    if result.reason == speechsdk.ResultReason.Canceled:
-        details = speechsdk.CancellationDetails.from_result(result)
-        print(f"Speech synthesis canceled: {details.reason} - {details.error_details}")
-
-    return None
+    
+    try:
+        voice_id = LANGUAGE_TO_POLLY_VOICE.get(language, "Joanna")
+        response = polly_client.synthesize_speech(
+            Text=text,
+            OutputFormat="mp3",
+            VoiceId=voice_id
+        )
+        audio_data = response["AudioStream"].read()
+        return base64.b64encode(audio_data).decode("utf-8")
+    except Exception as e:
+        print(f"Polly synthesis error: {e}")
+        return None
 
 def build_whisper_url(whisper_endpoint: str, deployment: str) -> str:
     base = whisper_endpoint.rstrip("/")
@@ -524,34 +554,62 @@ async def get_gov_schemes(request: SchemeRequest, current_user: dict = Depends(g
         print(f"Schemes error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error fetching schemes: {str(e)}")
 
-@app.post("/process-audio")
-async def process_audio(file: UploadFile = File(...), language: str = "en", current_user: dict = Depends(get_current_user)):
+@app.post("/api/transcribe")
+async def transcribe_audio(file: UploadFile = File(...), language: str = "hi", current_user: dict = Depends(get_current_user)):
     """
-    Process audio file: transcribe using Whisper API and generate AI response
+    Transcribe audio using Amazon Transcribe
+    """
+    try:
+        if not file.filename:
+            raise HTTPException(status_code=400, detail="No file provided")
+        
+        file_extension = file.filename.split(".")[-1].lower()
+        if file_extension not in ["wav", "mp3"]:
+            raise HTTPException(status_code=400, detail="Only WAV and MP3 files supported")
+        
+        audio_bytes = await file.read()
+        transcript = await transcribe_service.transcribe_audio(audio_bytes, file_extension, language)
+        
+        return JSONResponse({"transcript": transcript})
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Transcribe error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
+
+@app.post("/process-audio")
+async def process_audio(file: UploadFile = File(...), language: str = "hi", current_user: dict = Depends(get_current_user)):
+    """
+    Process audio file: transcribe using Amazon Transcribe and generate AI response
     """
     try:
         print(f"Processing audio file: {file.filename}, language: {language}")
         
-        # Read audio file
-        audio_bytes = await file.read()
-        content_type = file.content_type or "application/octet-stream"
-        print(f"Audio content-type: {content_type}, bytes: {len(audio_bytes)}")
-
-        # Transcribe using Azure Speech Services
-        transcript = recognize_speech_with_azure(audio_bytes, language)
+        if not file.filename:
+            raise HTTPException(status_code=400, detail="No file provided")
         
-        print(f"Transcription successful: {transcript[:100]}...")
+        file_extension = file.filename.split(".")[-1].lower()
+        if file_extension not in ["wav", "mp3", "webm", "ogg"]:
+            file_extension = "wav"
+        
+        audio_bytes = await file.read()
+        print(f"Audio bytes: {len(audio_bytes)}, Language selected: {language}")
+        
+        # Transcribe using Amazon Transcribe
+        transcript = await transcribe_service.transcribe_audio(audio_bytes, file_extension, language)
+        print(f"Transcription successful (language: {language}): {transcript[:100]}...")
         
         if not transcript:
             raise HTTPException(status_code=400, detail="Could not transcribe audio")
         
         # Generate AI response using Azure OpenAI
         user_location = current_user.get("location", "India")
+        language_name = LANGUAGE_NAMES.get(language, "English")
         
         ai_response = azure_client.chat.completions.create(
             model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
             messages=[
-                {"role": "system", "content": f"You are Gram Vaani, AI Voice Assistant for Rural India. Help with farming, weather, crops, and government schemes. User is in {user_location}."},
+                {"role": "system", "content": f"You are Gram Vaani, AI Voice Assistant for Rural India. Help with farming, weather, crops, and government schemes. User is in {user_location}. IMPORTANT: The user is speaking in {language_name}. You MUST respond ONLY in {language_name} language. Do not use any other language in your response."},
                 {"role": "user", "content": transcript}
             ],
             max_tokens=1000,
