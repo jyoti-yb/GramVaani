@@ -510,54 +510,51 @@ async def get_weather(request: WeatherRequest, current_user: dict = Depends(get_
             location = current_user.get("location", "Delhi")
             city = location.split(",")[0].strip()
         
-        print(f"Weather request for city: {city}")
+        print(f"Weather request for city: {city}, language: {request.language}")
         
         api_key = os.getenv("OPENWEATHER_API_KEY")
         if not api_key:
             raise HTTPException(
                 status_code=500, 
-                detail="OpenWeather API key not configured. Get a free key from https://openweathermap.org/api"
+                detail="OpenWeather API key not configured."
             )
         
         url = f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}&units=metric"
-        print(f"Calling OpenWeather API for city: {city}")
-        
         res = requests.get(url, timeout=10)
-        print(f"OpenWeather response status: {res.status_code}")
-        
-        if res.status_code == 401:
-            raise HTTPException(
-                status_code=500,
-                detail="Invalid OpenWeather API key. Please add a valid key to OPENWEATHER_API_KEY in .env"
-            )
         
         if res.status_code == 404:
-            print(f"City not found: {city}. Trying with fallback city...")
             location_parts = current_user.get("location", "Delhi").split(",")
             if len(location_parts) > 1:
                 fallback_city = location_parts[1].strip()
-                print(f"Trying fallback city: {fallback_city}")
                 res = requests.get(
                     f"https://api.openweathermap.org/data/2.5/weather?q={fallback_city}&appid={api_key}&units=metric",
                     timeout=10
                 )
-                if res.status_code != 200:
-                    raise HTTPException(status_code=400, detail=f"Weather data not found for {city}. Try a major city.")
-                city = fallback_city
-            else:
-                raise HTTPException(status_code=400, detail=f"City '{city}' not found. Try entering a major city name.")
+                if res.status_code == 200:
+                    city = fallback_city
         
         if res.status_code != 200:
-            print(f"OpenWeather error: {res.text}")
-            raise HTTPException(status_code=500, detail=f"Weather API error: {res.text}")
+            raise HTTPException(status_code=400, detail=f"Weather data not found for {city}")
         
         data = res.json()
         weather_desc = data["weather"][0]["description"]
         temp = data["main"]["temp"]
         humidity = data["main"]["humidity"]
         
-        response_text = f"Weather in {city}: {weather_desc}, temperature {temp}°C, humidity {humidity}%"
-        print(f"Weather response: {response_text}")
+        # Use AI to generate response in selected language
+        language_name = LANGUAGE_NAMES.get(request.language, "English")
+        ai_response = azure_client.chat.completions.create(
+            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
+            messages=[
+                {"role": "system", "content": f"You are a weather assistant. Provide weather information in {language_name} language ONLY. Be concise and natural."},
+                {"role": "user", "content": f"Tell me the weather in {city}: {weather_desc}, temperature {temp}°C, humidity {humidity}%"}
+            ],
+            max_tokens=200,
+            temperature=0.7
+        )
+        
+        response_text = ai_response.choices[0].message.content
+        print(f"Weather response in {language_name}: {response_text}")
         
         audio_data = synthesize_speech(response_text, request.language)
         return JSONResponse({"text": response_text, "audio_data": audio_data})
@@ -580,7 +577,21 @@ async def get_crop_prices(request: CropPriceRequest, current_user: dict = Depend
         }
         
         price = base_prices.get(request.crop.lower(), 2500)
-        response_text = f"Current price of {request.crop} in {market} market is ₹{price} per quintal"
+        
+        # Use AI to generate response in selected language
+        language_name = LANGUAGE_NAMES.get(request.language, "English")
+        ai_response = azure_client.chat.completions.create(
+            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
+            messages=[
+                {"role": "system", "content": f"You are a crop price assistant. Provide crop price information in {language_name} language ONLY. Be concise and natural."},
+                {"role": "user", "content": f"Tell me the current price of {request.crop} in {market} market is ₹{price} per quintal"}
+            ],
+            max_tokens=200,
+            temperature=0.7
+        )
+        
+        response_text = ai_response.choices[0].message.content
+        print(f"Crop price response in {language_name}: {response_text}")
         
         audio_data = synthesize_speech(response_text, request.language)
         return JSONResponse({"text": response_text, "audio_data": audio_data})
@@ -590,12 +601,14 @@ async def get_crop_prices(request: CropPriceRequest, current_user: dict = Depend
 @app.post("/api/gov-schemes")
 async def get_gov_schemes(request: SchemeRequest, current_user: dict = Depends(get_current_user)):
     try:
-        print(f"Schemes request for topic: {request.topic}")
+        print(f"Schemes request for topic: {request.topic}, language: {request.language}")
+        
+        language_name = LANGUAGE_NAMES.get(request.language, "English")
         
         response = azure_client.chat.completions.create(
             model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
             messages=[
-                {"role": "system", "content": "You are Gram Vaani, AI assistant for rural India. Provide information about government schemes for farmers in simple terms."},
+                {"role": "system", "content": f"You are Gram Vaani, AI assistant for rural India. Provide information about government schemes for farmers in {language_name} language ONLY. Be concise and helpful."},
                 {"role": "user", "content": f"Tell me about government schemes related to {request.topic}"}
             ],
             max_tokens=1000,
@@ -603,7 +616,7 @@ async def get_gov_schemes(request: SchemeRequest, current_user: dict = Depends(g
         )
         
         response_text = response.choices[0].message.content
-        print(f"Schemes response generated successfully")
+        print(f"Schemes response in {language_name} generated successfully")
         
         audio_data = synthesize_speech(response_text, request.language)
         return JSONResponse({"text": response_text, "audio_data": audio_data})
