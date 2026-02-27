@@ -17,6 +17,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
 import asyncio
 from transcribe_service import TranscribeService
+import bcrypt
 
 load_dotenv()
 
@@ -78,16 +79,23 @@ LANGUAGE_TO_LOCALE = {
     "mr": "mr-IN",
 }
 
+# Polly for Hindi and English only
+POLLY_LANGUAGES = {"en", "hi"}
+
 LANGUAGE_TO_POLLY_VOICE = {
-    "en": "Joanna",
-    "hi": "Aditi",
-    "ta": "Aditi",
-    "te": "Aditi",
-    "kn": "Aditi",
-    "ml": "Aditi",
-    "bn": "Aditi",
-    "gu": "Aditi",
-    "mr": "Aditi",
+    "en": ("Joanna", "en-US"),
+    "hi": ("Aditi", "hi-IN"),
+}
+
+# Azure Speech for other Indian languages
+AZURE_SPEECH_VOICES = {
+    "ta": "ta-IN-ValluvarNeural",
+    "te": "te-IN-ShrutiNeural",
+    "kn": "kn-IN-SapnaNeural",
+    "ml": "ml-IN-SobhanaNeural",
+    "bn": "bn-IN-BashkarNeural",
+    "gu": "gu-IN-DhwaniNeural",
+    "mr": "mr-IN-AarohiNeural",
 }
 
 LANGUAGE_NAMES = {
@@ -106,18 +114,54 @@ def synthesize_speech(text: str, language: str) -> Optional[str]:
     if not text:
         return None
     
-    try:
-        voice_id = LANGUAGE_TO_POLLY_VOICE.get(language, "Joanna")
-        response = polly_client.synthesize_speech(
-            Text=text,
-            OutputFormat="mp3",
-            VoiceId=voice_id
-        )
-        audio_data = response["AudioStream"].read()
-        return base64.b64encode(audio_data).decode("utf-8")
-    except Exception as e:
-        print(f"Polly synthesis error: {e}")
-        return None
+    # Use Polly for Hindi and English
+    if language in POLLY_LANGUAGES:
+        try:
+            voice_config = LANGUAGE_TO_POLLY_VOICE.get(language, ("Joanna", "en-US"))
+            voice_id, language_code = voice_config
+            
+            print(f"Polly TTS: voice={voice_id}, language={language_code}")
+            
+            response = polly_client.synthesize_speech(
+                Text=text,
+                OutputFormat="mp3",
+                VoiceId=voice_id,
+                LanguageCode=language_code
+            )
+            audio_data = response["AudioStream"].read()
+            return base64.b64encode(audio_data).decode("utf-8")
+        except Exception as e:
+            print(f"Polly synthesis error: {e}")
+            return None
+    
+    # Use Azure Speech for other Indian languages
+    else:
+        try:
+            speech_key = os.getenv("AZURE_SPEECH_KEY")
+            speech_region = os.getenv("AZURE_SPEECH_REGION")
+            
+            if not speech_key or not speech_region:
+                print("Azure Speech credentials not configured")
+                return None
+            
+            speech_config = speechsdk.SpeechConfig(subscription=speech_key, region=speech_region)
+            voice_name = AZURE_SPEECH_VOICES.get(language, "en-US-JennyNeural")
+            speech_config.speech_synthesis_voice_name = voice_name
+            speech_config.set_speech_synthesis_output_format(speechsdk.SpeechSynthesisOutputFormat.Audio16Khz32KBitRateMonoMp3)
+            
+            print(f"Azure Speech TTS: voice={voice_name}, region={speech_region}")
+            
+            synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=None)
+            result = synthesizer.speak_text_async(text).get()
+            
+            if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
+                return base64.b64encode(result.audio_data).decode("utf-8")
+            else:
+                print(f"Azure Speech synthesis failed: {result.reason}")
+                return None
+        except Exception as e:
+            print(f"Azure Speech synthesis error: {e}")
+            return None
 
 def build_whisper_url(whisper_endpoint: str, deployment: str) -> str:
     base = whisper_endpoint.rstrip("/")
@@ -233,14 +277,15 @@ async def init_db():
         # Create test user if not exists
         test_user = await users_collection.find_one({"email": "test@example.com"})
         if not test_user:
+            hashed_password = bcrypt.hashpw("password123".encode('utf-8'), bcrypt.gensalt())
             await users_collection.insert_one({
                 "email": "test@example.com",
-                "password": "password123",
+                "password": hashed_password.decode('utf-8'),
                 "language": "en",
                 "location": "Delhi, India",
                 "created_at": datetime.utcnow()
             })
-            print("Test user created")
+            print("Test user created with hashed password")
     except Exception as e:
         print(f"MongoDB connection failed: {e}")
         raise
@@ -361,9 +406,11 @@ async def signup(user: UserSignup):
         if existing_user:
             raise HTTPException(status_code=400, detail="Email already registered")
         
+        hashed_password = bcrypt.hashpw(user.password.encode('utf-8'), bcrypt.gensalt())
+        
         user_doc = {
             "email": user.email,
-            "password": user.password,
+            "password": hashed_password.decode('utf-8'),
             "language": user.language,
             "location": user.location,
             "created_at": datetime.utcnow()
@@ -387,9 +434,19 @@ async def login(user: UserLogin):
             print(f"User not found: {user.email}")
             raise HTTPException(status_code=401, detail="Invalid credentials")
         
-        if user.password != db_user["password"]:
-            print(f"Invalid password for: {user.email}")
-            raise HTTPException(status_code=401, detail="Invalid credentials")
+        stored_password = db_user["password"]
+        
+        # Check if password is hashed (starts with $2b$) or plain text
+        if stored_password.startswith('$2b$'):
+            # Hashed password - use bcrypt
+            if not bcrypt.checkpw(user.password.encode('utf-8'), stored_password.encode('utf-8')):
+                print(f"Invalid password for: {user.email}")
+                raise HTTPException(status_code=401, detail="Invalid credentials")
+        else:
+            # Plain text password (legacy) - direct comparison
+            if user.password != stored_password:
+                print(f"Invalid password for: {user.email}")
+                raise HTTPException(status_code=401, detail="Invalid credentials")
         
         access_token = create_access_token(data={"sub": user.email})
         print(f"Login successful for: {user.email}")
