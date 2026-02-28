@@ -1,74 +1,42 @@
-Hello everyone, we are **Team RuntimeTerror404**, building **Gram Vaani** for farmers as part of the **AWS AI for Bharat Hackathon**.
+# 🌾 Gram Vaani - AI Voice Assistant
 
-# Gram Vaani  
-### Community-Verified AI Voice Assistant for Farmers (AWS AI for Bharat)
+## Quick Setup
 
-Gram Vaani is a voice-first AI system that delivers localized agricultural guidance to rural farmers using basic phones.  
-It combines farmer voice input, community reports, weather signals, and AI reasoning to generate trusted, explainable advisories in local languages.
+### 1. Backend Setup
+```bash
+cd backend
+pip install -r requirements.txt
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
 
-![ssfrontend](https://github.com/user-attachments/assets/ee045456-6748-4f10-9dc4-0fd92b766770)
+### 2. Frontend Setup (New Terminal)
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
+## Troubleshooting
 
-## Problem
+### Error: `net::ERR_CONNECTION_REFUSED`
+**Solution:** Backend server is not running
+1. Open terminal in `backend` folder
+2. Run: `uvicorn main:app --reload --host 0.0.0.0 --port 8000`
+3. Wait for "Application startup complete"
+4. Then start frontend
 
-Small and marginal farmers lack:
-- Access to timely expert advice  
-- Reliable local intelligence  
-- Digital tools suited for low literacy and poor connectivity  
+### Error: `password cannot be longer than 72 bytes`
+**Solution:** Use shorter passwords (under 72 characters)
 
-Most agricultural apps fail due to dependence on smartphones and text-based interfaces.
+### Error: MongoDB connection failed
+**Solution:** Check internet connection and MongoDB Atlas access
 
-## Solution
+## Required Services
+- MongoDB Atlas (cloud database)
+- Azure OpenAI API
+- Azure Speech Services
+- OpenWeather API
 
-Farmers call a toll-free number and:
-
-1. Speak in their local dialect  
-2. System understands crop and location context  
-3. Combines:
-   - Community farmer signals  
-   - Weather data  
-   - Government advisories  
-   - AI reasoning  
-4. Delivers localized advice via voice  
-
-Includes confidence scoring and expert escalation when required.
-
-## Key Capabilities
-
-- Voice-first, multilingual interaction  
-- Community-verified advisories  
-- Explainable AI responses  
-- Human-in-the-loop validation  
-- Low-network / 2G compatibility  
-- Predictive crop risk detection (future evolution)  
-
-## AWS Architecture
-
-- Amazon Connect / Lex  
-- Amazon Transcribe & Polly  
-- Amazon Bedrock  
-- AWS Lambda  
-- DynamoDB + S3 + SNS  
-- Weather APIs + Government feeds  
-
-Serverless, scalable, and Bharat-ready.
-
-## Impact Vision
-
-Gram Vaani evolves from a voice assistant into a community-powered agricultural intelligence network enabling:
-
-- Early disease detection  
-- Climate-aware advisories  
-- Reduced crop loss  
-- Inclusive AI access for low-literacy farmers  
-
-## Repository Contents
-
-- `design.md` – System architecture  
-- `requirements.md` – Product requirements  
-
-## Submission
-
-Built for **AWS AI for Bharat Hackathon**
-
- 
+## Default URLs
+- Frontend: http://localhost:5173
+- Backend: http://localhost:8000
