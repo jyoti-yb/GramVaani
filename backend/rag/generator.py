@@ -1,5 +1,34 @@
 from rag.retriever import CropRetriever
+from openai import OpenAI
+client = OpenAI()
 
+def generate_llm_answer(question, context, crop):
+    prompt = f"""
+You are Gram Vaani, an agriculture advisor helping Indian farmers.
+
+Use ONLY the provided agricultural context.
+
+Crop: {crop}
+
+Context:
+{context}
+
+Farmer Question:
+{question}
+
+Instructions:
+- Give practical actionable advice.
+- Use simple language.
+- Keep sentences short (voice friendly).
+- Ask ONE helpful follow-up question.
+"""
+
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+    return response.choices[0].message.content
 
 class FarmerAssistant:
     def __init__(self):
@@ -47,12 +76,28 @@ class FarmerAssistant:
         for chunk in self.retriever.metadata:
             if chunk["crop"] == selected_crop:
                 if target_section and target_section.lower() in chunk["section"].lower():
-                    return f"{selected_crop.upper()} - {chunk['section']}\n\n{chunk['content']}"
+                    # context = chunk["content"]
+                    results = self.retriever.search(question, top_k=3)
+                    context = "\n\n".join([r["content"] for r in results])
+
+                    return generate_llm_answer(
+                        question,
+                        context,
+                        selected_crop
+                    )
 
         # fallback to first chunk of crop
         for chunk in self.retriever.metadata:
             if chunk["crop"] == selected_crop:
-                return f"{selected_crop.upper()}\n\n{chunk['content']}"
+                # context = chunk["content"]
+                results = self.retriever.search(question, top_k=3)
+                context = "\n\n".join([r["content"] for r in results])
+
+                return generate_llm_answer(
+                    question,
+                    context,
+                    selected_crop
+                )
 
         return "Sorry, I could not find relevant information."
 

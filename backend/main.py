@@ -18,10 +18,12 @@ from bson import ObjectId
 import asyncio
 from transcribe_service import TranscribeService
 import bcrypt
+from rag.generator import FarmerAssistant
 
 load_dotenv()
 
 app = FastAPI()
+rag_assistant = FarmerAssistant()
 
 # MongoDB connection with working credentials
 MONGO_URL = os.getenv("MONGO_URL", "mongodb+srv://gramvani_user:GramVaani123!@firewall.jchsp.mongodb.net/gramvani?retryWrites=true&w=majority")
@@ -471,17 +473,7 @@ async def process_text(request: TextRequest, current_user: dict = Depends(get_cu
         user_location = current_user.get("location", "India")
         print(f"Process text request: {request.text[:50]}...")
         
-        response = azure_client.chat.completions.create(
-            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
-            messages=[
-                {"role": "system", "content": f"You are Gram Vaani, AI Voice Assistant for Rural India. Help with farming, weather, crops, and government schemes. User is in {user_location}."},
-                {"role": "user", "content": request.text}
-            ],
-            max_tokens=1000,
-            temperature=0.7
-        )
-        
-        response_text = response.choices[0].message.content
+        response_text = rag_assistant.answer(request.text)
         print(f"AI response generated successfully")
         
         # Log query to MongoDB
@@ -676,18 +668,8 @@ async def process_audio(file: UploadFile = File(...), language: str = "hi", curr
         user_location = current_user.get("location", "India")
         language_name = LANGUAGE_NAMES.get(language, "English")
         
-        ai_response = azure_client.chat.completions.create(
-            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
-            messages=[
-                {"role": "system", "content": f"You are Gram Vaani, AI Voice Assistant for Rural India. Help with farming, weather, crops, and government schemes. User is in {user_location}. IMPORTANT: The user is speaking in {language_name}. You MUST respond ONLY in {language_name} language. Do not use any other language in your response."},
-                {"role": "user", "content": transcript}
-            ],
-            max_tokens=1000,
-            temperature=0.7
-        )
-        
-        response_text = ai_response.choices[0].message.content
-        print(f"AI response generated successfully")
+        response_text = rag_assistant.answer(transcript)
+        print(f"RAG response generated successfully")
         
         # Log query to MongoDB
         await user_queries_collection.insert_one({
