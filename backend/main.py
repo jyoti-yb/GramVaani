@@ -26,6 +26,7 @@ dynamodb = boto3.resource('dynamodb', region_name='ap-south-1')
 users_table = dynamodb.Table('gramvaani_users')
 queries_table = dynamodb.Table('gramvaani_user_querie')
 sessions_table = dynamodb.Table('gramvaani_sessions')
+village_trust_table = dynamodb.Table('gramvaani_village_trust')
 
 print("DynamoDB connection initialized")
 
@@ -215,6 +216,11 @@ class SchemeRequest(BaseModel):
 class ReverseGeocodeRequest(BaseModel):
     latitude: float
     longitude: float
+
+class FeedbackRequest(BaseModel):
+    query_id: str
+    helpful: bool
+    feedback_text: Optional[str] = None
 
 # Auth functions
 def create_access_token(data: dict):
@@ -424,6 +430,75 @@ async def get_query_history(current_user: dict = Depends(get_current_user)):
         print(f"Query history error: {e}")
         return {"queries": [], "count": 0}
 
+@app.post("/api/feedback")
+async def submit_feedback(feedback: FeedbackRequest, current_user: dict = Depends(get_current_user)):
+    """Submit feedback for a query response"""
+    try:
+        # Update query with feedback
+        queries_table.update_item(
+            Key={'query_id': feedback.query_id},
+            UpdateExpression='SET helpful = :h, feedback_text = :f, feedback_time = :t',
+            ExpressionAttributeValues={
+                ':h': feedback.helpful,
+                ':f': feedback.feedback_text or '',
+                ':t': datetime.utcnow().isoformat()
+            }
+        )
+        
+        # Update village trust score
+        village_id = current_user.get('location', 'Unknown').split(',')[0].strip()
+        update_village_trust(village_id, feedback.helpful)
+        
+        return {"status": "success", "message": "Feedback recorded"}
+    except Exception as e:
+        print(f"Feedback error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+def update_village_trust(village_id: str, helpful: bool):
+    """Update village trust score based on feedback"""
+    try:
+        from boto3.dynamodb.conditions import Key
+        
+        # Get or create village trust record
+        response = village_trust_table.get_item(Key={'village_id': village_id})
+        
+        if response.get('Item'):
+            item = response['Item']
+            total = item.get('total_responses', 0) + 1
+            helpful_count = item.get('helpful_count', 0) + (1 if helpful else 0)
+        else:
+            total = 1
+            helpful_count = 1 if helpful else 0
+        
+        trust_score = (helpful_count / total) * 100 if total > 0 else 0
+        
+        village_trust_table.put_item(Item={
+            'village_id': village_id,
+            'total_responses': total,
+            'helpful_count': helpful_count,
+            'trust_score': round(trust_score, 2),
+            'last_updated': datetime.utcnow().isoformat()
+        })
+    except Exception as e:
+        print(f"Village trust update error: {e}")
+
+@app.get("/api/village-trust/{village_id}")
+async def get_village_trust(village_id: str):
+    """Get village trust score"""
+    try:
+        response = village_trust_table.get_item(Key={'village_id': village_id})
+        if response.get('Item'):
+            return response['Item']
+        return {
+            'village_id': village_id,
+            'total_responses': 0,
+            'helpful_count': 0,
+            'trust_score': 0
+        }
+    except Exception as e:
+        print(f"Village trust fetch error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/process-text")
 async def process_text(request: TextRequest, current_user: dict = Depends(get_current_user)):
     try:
@@ -446,20 +521,26 @@ async def process_text(request: TextRequest, current_user: dict = Depends(get_cu
         # Translate query to English for RAG
         query_english = translate_to_english(request.text, request.language)
         
+        # Generate query ID
+        query_id = str(uuid.uuid4())
+        
         # Log query to DynamoDB
         queries_table.put_item(Item={
-            "query_id": str(uuid.uuid4()),
+            "query_id": query_id,
             "user_phone": current_user["phone_number"],
             "query": request.text,
             "query_english": query_english,
             "response": response_text,
             "language": request.language,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow().isoformat(),
+            "helpful": None,  # Will be updated by feedback
+            "feedback_text": None
         })
         
         audio_data = synthesize_speech(response_text, request.language)
 
         return JSONResponse({
+            "query_id": query_id,
             "response_text": response_text,
             "audio_data": audio_data
         })
@@ -646,21 +727,27 @@ async def process_audio(file: UploadFile = File(...), language: str = "hi", curr
         # Translate query to English for RAG
         query_english = translate_to_english(transcript, language)
         
+        # Generate query ID
+        query_id = str(uuid.uuid4())
+        
         # Log query to DynamoDB
         queries_table.put_item(Item={
-            "query_id": str(uuid.uuid4()),
+            "query_id": query_id,
             "user_phone": current_user["phone_number"],
             "query": transcript,
             "query_english": query_english,
             "response": response_text,
             "query_type": "audio",
             "language": language,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow().isoformat(),
+            "helpful": None,
+            "feedback_text": None
         })
         
         audio_data = synthesize_speech(response_text, language)
 
         return JSONResponse({
+            "query_id": query_id,
             "transcript": transcript,
             "response_text": response_text,
             "audio_data": audio_data

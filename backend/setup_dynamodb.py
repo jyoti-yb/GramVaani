@@ -124,6 +124,33 @@ def setup_dynamodb_tables():
         else:
             print(f"✗ Error creating sessions table: {e}")
     
+    # Create village trust table
+    try:
+        trust_table = dynamodb.create_table(
+            TableName='gramvaani_village_trust',
+            KeySchema=[
+                {
+                    'AttributeName': 'village_id',
+                    'KeyType': 'HASH'  # Partition key
+                }
+            ],
+            AttributeDefinitions=[
+                {
+                    'AttributeName': 'village_id',
+                    'AttributeType': 'S'
+                }
+            ],
+            BillingMode='PAY_PER_REQUEST'
+        )
+        print("Creating village trust table...")
+        trust_table.wait_until_exists()
+        print("✓ gramvaani_village_trust table created successfully")
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ResourceInUseException':
+            print("✓ gramvaani_village_trust table already exists")
+        else:
+            print(f"✗ Error creating village trust table: {e}")
+    
     print("\n✓ DynamoDB setup complete!")
 
 if __name__ == "__main__":
