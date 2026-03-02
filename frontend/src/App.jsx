@@ -3,9 +3,12 @@ import { Mic, MicOff, Play, Pause, Loader, LogOut, User } from 'lucide-react'
 import axios from 'axios'
 import Auth from './Auth'
 import Profile from './Profile'
+import Landing from './Landing'
 import { API_URL } from './config'
+import { getTranslation } from './translations'
 
 function App() {
+  const [showLanding, setShowLanding] = useState(true)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [user, setUser] = useState(null)
   const [isRecording, setIsRecording] = useState(false)
@@ -92,6 +95,15 @@ function App() {
   useEffect(() => {
     checkAuthStatus()
   }, [])
+
+  useEffect(() => {
+    // If user is authenticated, skip landing page
+    if (isAuthenticated) {
+      setShowLanding(false)
+    }
+  }, [isAuthenticated])
+
+  const t = (key) => getTranslation(user?.language || 'en', key)
 
   const checkAuthStatus = async () => {
     const token = localStorage.getItem('token')
@@ -428,8 +440,16 @@ function App() {
     }
   }
 
+  if (showLanding && !isAuthenticated) {
+    return <Landing onGetStarted={() => setShowLanding(false)} />
+  }
+
   if (!isAuthenticated) {
     return <Auth onLogin={handleLogin} />
+  }
+
+  if (!user) {
+    return <div className="container"><div className="main-card">Loading...</div></div>
   }
 
   if (showProfile) {
@@ -443,13 +463,13 @@ function App() {
   }
 
   return (
-    <div className="container">
+    <div className="container" key={user?.language}>
       <div className="header">
         <div className="logo">
           <div className="logo-icon">🌾</div>
           <div className="logo-text">
-            <h1>Gram Vaani</h1>
-            <p>AI Voice Assistant for Rural India</p>
+            <h1>{t('title')}</h1>
+            <p>{t('subtitle')}</p>
           </div>
           <div className="user-info">
             <div className="user-details">
@@ -470,8 +490,8 @@ function App() {
 
       <div className="main-card">
         <div className="input-mode-selector">
-          <button className={`mode-button ${inputMode === 'voice' ? 'active' : ''}`} onClick={() => setInputMode('voice')}>🎤 Voice</button>
-          <button className={`mode-button ${inputMode === 'text' ? 'active' : ''}`} onClick={() => setInputMode('text')}>✍ Text</button>
+          <button className={`mode-button ${inputMode === 'voice' ? 'active' : ''}`} onClick={() => setInputMode('voice')}>🎤 {t('voice')}</button>
+          <button className={`mode-button ${inputMode === 'text' ? 'active' : ''}`} onClick={() => setInputMode('text')}>✍ {t('text')}</button>
         </div>
 
         {inputMode === 'voice' ? (
@@ -480,9 +500,9 @@ function App() {
               {isProcessing ? <Loader className="loading" /> : isRecording ? <MicOff size={40} /> : <Mic size={40} />}
             </button>
             <div className="status-text">
-              {isRecording ? "🎤 Listening... Click to stop" :
-                isProcessing ? "🤖 Processing your request..." :
-                  "👆 Click to speak in your local dialect"}
+              {isRecording ? `🎤 ${t('listening')}` :
+                isProcessing ? `🤖 ${t('processing')}` :
+                  `👆 ${t('clickToSpeak')}`}
             </div>
             <div className="language-selector-inline">
               <div className="language-icon">🌐</div>
@@ -501,10 +521,10 @@ function App() {
           </div>
         ) : (
           <div className="text-section">
-            <textarea value={textInput} onChange={(e) => setTextInput(e.target.value)} placeholder="Type your question here..." className="text-input" rows={3} disabled={isProcessing} />
+            <textarea value={textInput} onChange={(e) => setTextInput(e.target.value)} placeholder={t('typeQuestion')} className="text-input" rows={3} disabled={isProcessing} />
             <div className="text-controls">
               <button className="submit-button" onClick={processText} disabled={isProcessing || !textInput.trim()}>
-                {isProcessing ? <><Loader className="loading" size={16} /> Processing...</> : 'Submit Question'}
+                {isProcessing ? <><Loader className="loading" size={16} /> {t('processing')}</> : t('submit')}
               </button>
               <div className="language-selector-inline">
                 <div className="language-icon">🌐</div>
@@ -524,12 +544,32 @@ function App() {
           </div>
         )}
 
+        {error && <div className="error-message">{error}</div>}
+
+        {response && (
+          <div className="response-section">
+            <h3>📝 {t('whatYouSaid')}</h3>
+            <p className="response-text">{response.transcript}</p>
+            <h3>💬 {t('response')}</h3>
+            <p className="response-text">{response.response_text}</p>
+            {audioUrl && (
+              <div className="audio-controls">
+                <button className="play-button" onClick={playAudio}>
+                  {isPlaying ? <Pause size={20} /> : <Play size={20} />}
+                  {isPlaying ? t('pause') : t('playResponse')}
+                </button>
+                <audio ref={audioRef} src={audioUrl} onEnded={handleAudioEnded} />
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Quick Access Buttons */}
         <div className="feature-buttons">
           <button className="feature-card" onClick={getMyWeather} disabled={isProcessing}>
             <div className="icon">🌤</div>
-            <div className="title">My Weather</div>
-            <div className="description">Current weather for {user?.location?.split(',')[0] || 'your location'}</div>
+            <div className="title">{t('myWeather')}</div>
+            <div className="description">{t('currentWeather')} {user?.location?.split(',')[0] || t('yourLocation')}</div>
           </button>
           {/* <button className="feature-card" onClick={getCropPricesForMyArea('Rice')} disabled={isProcessing}>
             <div className="icon">🌾</div>
@@ -547,40 +587,20 @@ function App() {
         {/* <div className="feature-buttons" style={{marginTop: '20px'}}> */}
           <button className="feature-card" onClick={() => openModal('weather')}>
             <div className="icon">🌍</div>
-            <div className="title">Other City Weather</div>
-            <div className="description">Check weather for any city</div>
+            <div className="title">{t('otherCity')}</div>
+            <div className="description">{t('checkWeather')}</div>
           </button>
           <button className="feature-card" onClick={() => openModal('crop')}>
             <div className="icon">💰</div>
-            <div className="title">Crop Prices</div>
-            <div className="description">Check prices for any crop</div>
+            <div className="title">{t('cropPrices')}</div>
+            <div className="description">{t('checkPrices')}</div>
           </button>
           <button className="feature-card" onClick={() => openModal('schemes')}>
             <div className="icon">🏛</div>
-            <div className="title">Govt Schemes</div>
-            <div className="description">Learn about government schemes</div>
+            <div className="title">{t('govSchemes')}</div>
+            <div className="description">{t('learnSchemes')}</div>
           </button>
         </div>
-
-        {error && <div className="error-message">{error}</div>}
-
-        {response && (
-          <div className="response-section">
-            <h3>📝 What you said:</h3>
-            <p className="response-text">{response.transcript}</p>
-            <h3>💬 Response:</h3>
-            <p className="response-text">{response.response_text}</p>
-            {audioUrl && (
-              <div className="audio-controls">
-                <button className="play-button" onClick={playAudio}>
-                  {isPlaying ? <Pause size={20} /> : <Play size={20} />}
-                  {isPlaying ? 'Pause' : 'Play Response'}
-                </button>
-                <audio ref={audioRef} src={audioUrl} onEnded={handleAudioEnded} />
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Modal */}
