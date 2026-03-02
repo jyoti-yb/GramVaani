@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from openai import AzureOpenAI
 import os
 import base64
@@ -13,20 +13,24 @@ import requests
 import jwt
 from datetime import datetime, timedelta
 from typing import Optional
+from motor.motor_asyncio import AsyncIOMotorClient
+from bson import ObjectId
+import asyncio
 from transcribe_service import TranscribeService
 import bcrypt
-import uuid
 
 load_dotenv()
 
 app = FastAPI()
 
-# DynamoDB connection
-dynamodb = boto3.resource('dynamodb', region_name='ap-south-1')
-users_table = dynamodb.Table('gramvaani_users')
-queries_table = dynamodb.Table('gramvaani_user_querie')
+# MongoDB connection with working credentials
+MONGO_URL = os.getenv("MONGO_URL", "mongodb+srv://gramvani_user:GramVaani123!@firewall.jchsp.mongodb.net/gramvani?retryWrites=true&w=majority")
+client_mongo = AsyncIOMotorClient(MONGO_URL)
+db = client_mongo.gramvani
+users_collection = db.user
+user_queries_collection = db.user_queries
 
-print("DynamoDB connection initialized")
+print("MongoDB connection initialized with gramvani_user")
 
 # Security
 security = HTTPBearer()
@@ -106,26 +110,6 @@ LANGUAGE_NAMES = {
     "mr": "Marathi",
 }
 
-def translate_to_english(text: str, source_lang: str) -> str:
-    """Translate text to English using Azure OpenAI GPT"""
-    if source_lang == "en":
-        return text
-    try:
-        language_name = LANGUAGE_NAMES.get(source_lang, "Unknown")
-        response = azure_client.chat.completions.create(
-            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
-            messages=[
-                {"role": "system", "content": f"You are a professional translator. Translate the following {language_name} text to English. Only return the translated text, nothing else."},
-                {"role": "user", "content": text}
-            ],
-            max_tokens=500,
-            temperature=0.3
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        print(f"Translation error: {e}")
-        return text
-
 def synthesize_speech(text: str, language: str) -> Optional[str]:
     if not text:
         return None
@@ -179,15 +163,60 @@ def synthesize_speech(text: str, language: str) -> Optional[str]:
             print(f"Azure Speech synthesis error: {e}")
             return None
 
+def build_whisper_url(whisper_endpoint: str, deployment: str) -> str:
+    base = whisper_endpoint.rstrip("/")
+    if "/openai/" in base or "audio/transcriptions" in base:
+        return base
+    return f"{base}/openai/deployments/{deployment}/audio/transcriptions"
+
+def get_whisper_api_versions() -> list[str]:
+    primary_version = os.getenv("WHISPER_API_VERSION", "2024-06-01")
+    fallback_versions = ["2024-02-15-preview", "2023-09-01-preview"]
+    versions = [primary_version] + [v for v in fallback_versions if v != primary_version]
+    return versions
+
+def recognize_speech_with_azure(audio_bytes: bytes, language: str) -> str:
+    speech_key = os.getenv("AZURE_SPEECH_KEY")
+    speech_region = os.getenv("AZURE_SPEECH_REGION")
+    if not speech_key or not speech_region:
+        raise HTTPException(status_code=500, detail="Azure Speech credentials not configured")
+
+    locale = LANGUAGE_TO_LOCALE.get(language, "en-US")
+    url = f"https://{speech_region}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1"
+
+    headers = {
+        "Ocp-Apim-Subscription-Key": speech_key,
+        "Content-Type": "audio/wav; codecs=audio/pcm; samplerate=16000",
+    }
+    params = {
+        "language": locale,
+    }
+
+    response = requests.post(url, headers=headers, params=params, data=audio_bytes, timeout=60)
+
+    if response.status_code != 200:
+        raise HTTPException(status_code=500, detail=f"Speech recognition failed: {response.text}")
+
+    try:
+        data = response.json()
+    except ValueError:
+        raise HTTPException(status_code=500, detail="Speech recognition failed: invalid response")
+
+    transcript = data.get("DisplayText") or data.get("Text") or ""
+    if not transcript:
+        raise HTTPException(status_code=400, detail="Speech not recognized. Please try again.")
+
+    return transcript
+
 # Models
 class UserSignup(BaseModel):
-    phone_number: str
+    email: EmailStr
     password: str
     language: str
     location: str
 
 class UserLogin(BaseModel):
-    phone_number: str
+    email: EmailStr
     password: str
 
 class Token(BaseModel):
@@ -225,32 +254,70 @@ def create_access_token(data: dict):
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
         payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
-        phone_number = payload.get("sub")
-        response = users_table.get_item(Key={'phone_number': phone_number})
-        user = response.get('Item')
-        if not user:
+        email = payload.get("sub")
+        user = await users_collection.find_one({"email": email})
+        if user is None:
             raise HTTPException(status_code=401, detail="User not found")
         return user
     except Exception as e:
         print(f"Auth error: {e}")
         raise HTTPException(status_code=401, detail="Invalid token")
 
+# Database initialization
+async def init_db():
+    try:
+        # Test connection
+        await client_mongo.admin.command('ping')
+        print("MongoDB connection successful")
+        
+        # Create indexes
+        await users_collection.create_index("email", unique=True)
+        await user_queries_collection.create_index("user_email")
+        
+        # Create test user if not exists
+        test_user = await users_collection.find_one({"email": "test@example.com"})
+        if not test_user:
+            hashed_password = bcrypt.hashpw("password123".encode('utf-8'), bcrypt.gensalt())
+            await users_collection.insert_one({
+                "email": "test@example.com",
+                "password": hashed_password.decode('utf-8'),
+                "language": "en",
+                "location": "Delhi, India",
+                "created_at": datetime.utcnow()
+            })
+            print("Test user created with hashed password")
+    except Exception as e:
+        print(f"MongoDB connection failed: {e}")
+        raise
+
 @app.on_event("startup")
 async def startup_event():
-    print("DynamoDB tables ready")
+    await init_db()
 
 # Routes
 @app.get("/")
 async def root():
-    return {"message": "Gram Vaani API with DynamoDB is running"}
+    return {"message": "Gram Vaani API with MongoDB is running"}
 
 @app.get("/health")
 async def health():
     try:
-        users_table.table_status
-        return {"status": "healthy", "database": "connected"}
+        await client_mongo.admin.command('ping')
+        user_count = await users_collection.count_documents({})
+        test_user_exists = await users_collection.find_one({"email": "test@example.com"}) is not None
+        
+        return {
+            "status": "healthy",
+            "database": "connected",
+            "users": user_count,
+            "test_user_exists": test_user_exists
+        }
     except Exception as e:
-        return {"status": "unhealthy", "database": "disconnected", "error": str(e)}
+        return {
+            "status": "unhealthy",
+            "database": "disconnected",
+            "error": str(e)
+        }
 
 @app.get("/api/location")
 async def get_location():
@@ -335,21 +402,23 @@ async def reverse_geocode(request: ReverseGeocodeRequest):
 @app.post("/api/signup", response_model=Token)
 async def signup(user: UserSignup):
     try:
-        response = users_table.get_item(Key={'phone_number': user.phone_number})
-        if response.get('Item'):
-            raise HTTPException(status_code=400, detail="Phone number already registered")
+        existing_user = await users_collection.find_one({"email": user.email})
+        if existing_user:
+            raise HTTPException(status_code=400, detail="Email already registered")
         
         hashed_password = bcrypt.hashpw(user.password.encode('utf-8'), bcrypt.gensalt())
         
-        users_table.put_item(Item={
-            "phone_number": user.phone_number,
+        user_doc = {
+            "email": user.email,
             "password": hashed_password.decode('utf-8'),
             "language": user.language,
             "location": user.location,
-            "created_at": datetime.utcnow().isoformat()
-        })
+            "created_at": datetime.utcnow()
+        }
         
-        access_token = create_access_token(data={"sub": user.phone_number})
+        await users_collection.insert_one(user_doc)
+        
+        access_token = create_access_token(data={"sub": user.email})
         return {"access_token": access_token, "token_type": "bearer"}
     except HTTPException:
         raise
@@ -359,26 +428,28 @@ async def signup(user: UserSignup):
 @app.post("/api/login", response_model=Token)
 async def login(user: UserLogin):
     try:
-        print(f"Login attempt for: {user.phone_number}")
-        response = users_table.get_item(Key={'phone_number': user.phone_number})
-        db_user = response.get('Item')
+        print(f"Login attempt for: {user.email}")
+        db_user = await users_collection.find_one({"email": user.email})
         if not db_user:
-            print(f"User not found: {user.phone_number}")
+            print(f"User not found: {user.email}")
             raise HTTPException(status_code=401, detail="Invalid credentials")
         
         stored_password = db_user["password"]
         
+        # Check if password is hashed (starts with $2b$) or plain text
         if stored_password.startswith('$2b$'):
+            # Hashed password - use bcrypt
             if not bcrypt.checkpw(user.password.encode('utf-8'), stored_password.encode('utf-8')):
-                print(f"Invalid password for: {user.phone_number}")
+                print(f"Invalid password for: {user.email}")
                 raise HTTPException(status_code=401, detail="Invalid credentials")
         else:
+            # Plain text password (legacy) - direct comparison
             if user.password != stored_password:
-                print(f"Invalid password for: {user.phone_number}")
+                print(f"Invalid password for: {user.email}")
                 raise HTTPException(status_code=401, detail="Invalid credentials")
         
-        access_token = create_access_token(data={"sub": user.phone_number})
-        print(f"Login successful for: {user.phone_number}")
+        access_token = create_access_token(data={"sub": user.email})
+        print(f"Login successful for: {user.email}")
         return {"access_token": access_token, "token_type": "bearer"}
     except HTTPException:
         raise
@@ -389,7 +460,7 @@ async def login(user: UserLogin):
 @app.get("/api/me")
 async def get_me(current_user: dict = Depends(get_current_user)):
     return {
-        "phone_number": current_user["phone_number"],
+        "email": current_user["email"],
         "language": current_user["language"],
         "location": current_user["location"]
     }
@@ -413,18 +484,12 @@ async def process_text(request: TextRequest, current_user: dict = Depends(get_cu
         response_text = response.choices[0].message.content
         print(f"AI response generated successfully")
         
-        # Translate query to English for RAG
-        query_english = translate_to_english(request.text, request.language)
-        
-        # Log query to DynamoDB
-        queries_table.put_item(Item={
-            "query_id": str(uuid.uuid4()),
-            "user_phone": current_user["phone_number"],
+        # Log query to MongoDB
+        await user_queries_collection.insert_one({
+            "user_email": current_user["email"],
             "query": request.text,
-            "query_english": query_english,
             "response": response_text,
-            "language": request.language,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow()
         })
         
         audio_data = synthesize_speech(response_text, request.language)
@@ -476,6 +541,7 @@ async def get_weather(request: WeatherRequest, current_user: dict = Depends(get_
         temp = data["main"]["temp"]
         humidity = data["main"]["humidity"]
         
+        # Use AI to generate response in selected language
         language_name = LANGUAGE_NAMES.get(request.language, "English")
         ai_response = azure_client.chat.completions.create(
             model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
@@ -503,6 +569,7 @@ async def get_crop_prices(request: CropPriceRequest, current_user: dict = Depend
     try:
         market = request.market or current_user.get("location", "Delhi").split(",")[0]
         
+        # Simulate crop prices
         base_prices = {
             'wheat': 2000, 'rice': 2400, 'corn': 1600, 'barley': 1800,
             'sugarcane': 5000, 'cotton': 6000, 'soybean': 4400, 'mustard': 5600,
@@ -511,6 +578,7 @@ async def get_crop_prices(request: CropPriceRequest, current_user: dict = Depend
         
         price = base_prices.get(request.crop.lower(), 2500)
         
+        # Use AI to generate response in selected language
         language_name = LANGUAGE_NAMES.get(request.language, "English")
         ai_response = azure_client.chat.completions.create(
             model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
@@ -558,6 +626,9 @@ async def get_gov_schemes(request: SchemeRequest, current_user: dict = Depends(g
 
 @app.post("/api/transcribe")
 async def transcribe_audio(file: UploadFile = File(...), language: str = "hi", current_user: dict = Depends(get_current_user)):
+    """
+    Transcribe audio using Amazon Transcribe
+    """
     try:
         if not file.filename:
             raise HTTPException(status_code=400, detail="No file provided")
@@ -578,6 +649,9 @@ async def transcribe_audio(file: UploadFile = File(...), language: str = "hi", c
 
 @app.post("/process-audio")
 async def process_audio(file: UploadFile = File(...), language: str = "hi", current_user: dict = Depends(get_current_user)):
+    """
+    Process audio file: transcribe using Amazon Transcribe and generate AI response
+    """
     try:
         print(f"Processing audio file: {file.filename}, language: {language}")
         
@@ -591,12 +665,14 @@ async def process_audio(file: UploadFile = File(...), language: str = "hi", curr
         audio_bytes = await file.read()
         print(f"Audio bytes: {len(audio_bytes)}, Language selected: {language}")
         
+        # Transcribe using Amazon Transcribe
         transcript = await transcribe_service.transcribe_audio(audio_bytes, file_extension, language)
         print(f"Transcription successful (language: {language}): {transcript[:100]}...")
         
         if not transcript:
             raise HTTPException(status_code=400, detail="Could not transcribe audio")
         
+        # Generate AI response using Azure OpenAI
         user_location = current_user.get("location", "India")
         language_name = LANGUAGE_NAMES.get(language, "English")
         
@@ -613,19 +689,13 @@ async def process_audio(file: UploadFile = File(...), language: str = "hi", curr
         response_text = ai_response.choices[0].message.content
         print(f"AI response generated successfully")
         
-        # Translate query to English for RAG
-        query_english = translate_to_english(transcript, language)
-        
-        # Log query to DynamoDB
-        queries_table.put_item(Item={
-            "query_id": str(uuid.uuid4()),
-            "user_phone": current_user["phone_number"],
+        # Log query to MongoDB
+        await user_queries_collection.insert_one({
+            "user_email": current_user["email"],
             "query": transcript,
-            "query_english": query_english,
             "response": response_text,
             "query_type": "audio",
-            "language": language,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow()
         })
         
         audio_data = synthesize_speech(response_text, language)

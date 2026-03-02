@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { User, Mail, Lock, MapPin, Globe, Loader } from 'lucide-react'
+import { User, Phone, Lock, MapPin, Globe, Loader } from 'lucide-react'
 import apiClient from './apiClient'
 import { API_URL } from './config'
 
@@ -8,7 +8,7 @@ function Auth({ onLogin }) {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   const [formData, setFormData] = useState({
-    email: '',
+    phone_number: '',
     password: '',
     language: 'en',
     location: ''
@@ -89,7 +89,7 @@ function Auth({ onLogin }) {
     try {
       const endpoint = isLogin ? '/api/login' : '/api/signup'
       const payload = isLogin 
-        ? { email: formData.email, password: formData.password }
+        ? { phone_number: formData.phone_number, password: formData.password }
         : formData
 
       const response = await apiClient.post(endpoint, payload)
@@ -99,7 +99,12 @@ function Auth({ onLogin }) {
         onLogin(response.data.access_token)
       }
     } catch (err) {
-      setError(err.response?.data?.detail || 'Authentication failed')
+      const errorDetail = err.response?.data?.detail
+      if (Array.isArray(errorDetail)) {
+        setError(errorDetail.map(e => e.msg).join(', '))
+      } else {
+        setError(errorDetail || 'Authentication failed')
+      }
     } finally {
       setIsLoading(false)
     }
@@ -143,12 +148,12 @@ function Auth({ onLogin }) {
         <form onSubmit={handleSubmit} className="auth-form">
           <div className="form-group">
             <div className="input-wrapper">
-              <Mail className="input-icon" size={20} />
+              <Phone className="input-icon" size={20} />
               <input
-                type="email"
-                name="email"
-                placeholder="Email address"
-                value={formData.email}
+                type="tel"
+                name="phone_number"
+                placeholder="Phone number (+919876543210)"
+                value={formData.phone_number}
                 onChange={handleInputChange}
                 required
                 className="auth-input"

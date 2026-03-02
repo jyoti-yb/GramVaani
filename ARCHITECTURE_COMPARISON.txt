@@ -1,0 +1,197 @@
+
+╔══════════════════════════════════════════════════════════════════════════╗
+║                    🏗️  ARCHITECTURE COMPARISON                           ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         CURRENT (MongoDB)                                │
+└─────────────────────────────────────────────────────────────────────────┘
+
+    Frontend (React)
+         │
+         │ HTTP/WebSocket
+         ▼
+    Backend (FastAPI)
+         │
+         ├─► Azure OpenAI (GPT-4)
+         ├─► Azure Speech Services
+         ├─► Amazon Polly (TTS)
+         ├─► Amazon Transcribe
+         ├─► OpenWeather API
+         │
+         ▼
+    MongoDB Atlas (Cloud)
+         ├─► users collection
+         └─► user_queries collection
+
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         NEW (DynamoDB)                                   │
+└─────────────────────────────────────────────────────────────────────────┘
+
+    Frontend (React)
+         │
+         │ HTTP/WebSocket
+         ▼
+    Backend (FastAPI)
+         │
+         ├─► Azure OpenAI (GPT-4)
+         ├─► Azure Speech Services
+         ├─► Amazon Polly (TTS)
+         ├─► Amazon Transcribe
+         ├─► OpenWeather API
+         │
+         ▼
+    AWS DynamoDB
+         ├─► gramvaani_users table
+         └─► gramvaani_user_queries table
+
+
+╔══════════════════════════════════════════════════════════════════════════╗
+║                    📊 DATABASE SCHEMA COMPARISON                         ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         MongoDB Collections                              │
+└─────────────────────────────────────────────────────────────────────────┘
+
+users collection:
+{
+  _id: ObjectId (auto),
+  email: string,
+  password: string (hashed),
+  language: string,
+  location: string,
+  created_at: datetime
+}
+
+user_queries collection:
+{
+  _id: ObjectId (auto),
+  user_email: string,
+  query: string,
+  response: string,
+  query_type: string,
+  timestamp: datetime
+}
+
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         DynamoDB Tables                                  │
+└─────────────────────────────────────────────────────────────────────────┘
+
+gramvaani_users table:
+{
+  email: string (partition key),
+  password: string (hashed),
+  language: string,
+  location: string,
+  created_at: string (ISO format)
+}
+
+gramvaani_user_queries table:
+{
+  query_id: string (partition key, UUID),
+  user_email: string (GSI),
+  query: string,
+  response: string,
+  query_type: string,
+  timestamp: string (ISO format)
+}
+
+
+╔══════════════════════════════════════════════════════════════════════════╗
+║                    🔄 MIGRATION FLOW                                     ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+Step 1: Setup
+─────────────
+  ┌─────────────────┐
+  │ Run setup       │
+  │ script          │──► Creates DynamoDB tables
+  └─────────────────┘
+
+Step 2: Test
+────────────
+  ┌─────────────────┐
+  │ Run both        │
+  │ versions        │──► MongoDB: port 8000
+  └─────────────────┘    DynamoDB: port 8001
+
+Step 3: Verify
+──────────────
+  ┌─────────────────┐
+  │ Test all        │
+  │ endpoints       │──► Signup, Login, Queries
+  └─────────────────┘
+
+Step 4: Switch
+──────────────
+  ┌─────────────────┐
+  │ Replace main.py │
+  │ with DynamoDB   │──► Production ready
+  └─────────────────┘
+
+
+╔══════════════════════════════════════════════════════════════════════════╗
+║                    📁 PROJECT STRUCTURE                                  ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+ruralai/
+├── backend/
+│   ├── main.py                      ← Current (MongoDB)
+│   ├── main_dynamodb.py             ← New (DynamoDB) ✨
+│   ├── setup_dynamodb.py            ← Setup script ✨
+│   ├── requirements.txt             ← Current deps
+│   ├── requirements_dynamodb.txt    ← New deps ✨
+│   ├── transcribe_service.py
+│   └── .env
+├── frontend/
+│   └── (no changes needed)
+├── INTEGRATION_README.md            ← Main guide ✨
+├── DYNAMODB_MIGRATION_GUIDE.md      ← Detailed guide ✨
+├── MONGODB_VS_DYNAMODB.md           ← Code comparison ✨
+├── QUICK_START.md                   ← Quick reference ✨
+└── README.md
+
+✨ = New files created for you
+
+
+╔══════════════════════════════════════════════════════════════════════════╗
+║                    🎯 DECISION MATRIX                                    ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+                    MongoDB          DynamoDB
+                    ────────          ────────
+Performance         Good              Excellent
+Scalability         Manual            Automatic
+Cost (small)        Free tier         Free tier
+Cost (medium)       $57/month         $5-10/month
+Cost (large)        $300+/month       $20-50/month
+Setup               Easy              Easy
+Maintenance         Medium            Low
+AWS Integration     External          Native
+Query Flexibility   High              Medium
+Learning Curve      Low               Medium
+
+
+╔══════════════════════════════════════════════════════════════════════════╗
+║                    ✅ RECOMMENDATION                                     ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+For your use case (Gram Vaani - Rural AI Assistant):
+
+✅ Use DynamoDB because:
+   • Better performance for key-based lookups (user auth)
+   • Auto-scaling for variable rural usage patterns
+   • Lower cost at scale
+   • Native AWS integration (you're already using AWS services)
+   • Better for read-heavy workloads (queries)
+
+⚠️  Stick with MongoDB if:
+   • You need complex queries and aggregations
+   • You prefer document-based flexibility
+   • Your team is more familiar with MongoDB
+
+💡 My Recommendation: Switch to DynamoDB
+   Your app is perfect for DynamoDB's strengths!

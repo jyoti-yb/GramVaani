@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from openai import AzureOpenAI
 import os
 import base64
@@ -106,26 +106,6 @@ LANGUAGE_NAMES = {
     "mr": "Marathi",
 }
 
-def translate_to_english(text: str, source_lang: str) -> str:
-    """Translate text to English using Azure OpenAI GPT"""
-    if source_lang == "en":
-        return text
-    try:
-        language_name = LANGUAGE_NAMES.get(source_lang, "Unknown")
-        response = azure_client.chat.completions.create(
-            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
-            messages=[
-                {"role": "system", "content": f"You are a professional translator. Translate the following {language_name} text to English. Only return the translated text, nothing else."},
-                {"role": "user", "content": text}
-            ],
-            max_tokens=500,
-            temperature=0.3
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        print(f"Translation error: {e}")
-        return text
-
 def synthesize_speech(text: str, language: str) -> Optional[str]:
     if not text:
         return None
@@ -181,13 +161,13 @@ def synthesize_speech(text: str, language: str) -> Optional[str]:
 
 # Models
 class UserSignup(BaseModel):
-    phone_number: str
+    email: EmailStr
     password: str
     language: str
     location: str
 
 class UserLogin(BaseModel):
-    phone_number: str
+    email: EmailStr
     password: str
 
 class Token(BaseModel):
@@ -225,8 +205,8 @@ def create_access_token(data: dict):
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
         payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
-        phone_number = payload.get("sub")
-        response = users_table.get_item(Key={'phone_number': phone_number})
+        email = payload.get("sub")
+        response = users_table.get_item(Key={'email': email})
         user = response.get('Item')
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
@@ -335,21 +315,21 @@ async def reverse_geocode(request: ReverseGeocodeRequest):
 @app.post("/api/signup", response_model=Token)
 async def signup(user: UserSignup):
     try:
-        response = users_table.get_item(Key={'phone_number': user.phone_number})
+        response = users_table.get_item(Key={'email': user.email})
         if response.get('Item'):
-            raise HTTPException(status_code=400, detail="Phone number already registered")
+            raise HTTPException(status_code=400, detail="Email already registered")
         
         hashed_password = bcrypt.hashpw(user.password.encode('utf-8'), bcrypt.gensalt())
         
         users_table.put_item(Item={
-            "phone_number": user.phone_number,
+            "email": user.email,
             "password": hashed_password.decode('utf-8'),
             "language": user.language,
             "location": user.location,
             "created_at": datetime.utcnow().isoformat()
         })
         
-        access_token = create_access_token(data={"sub": user.phone_number})
+        access_token = create_access_token(data={"sub": user.email})
         return {"access_token": access_token, "token_type": "bearer"}
     except HTTPException:
         raise
@@ -359,26 +339,26 @@ async def signup(user: UserSignup):
 @app.post("/api/login", response_model=Token)
 async def login(user: UserLogin):
     try:
-        print(f"Login attempt for: {user.phone_number}")
-        response = users_table.get_item(Key={'phone_number': user.phone_number})
+        print(f"Login attempt for: {user.email}")
+        response = users_table.get_item(Key={'email': user.email})
         db_user = response.get('Item')
         if not db_user:
-            print(f"User not found: {user.phone_number}")
+            print(f"User not found: {user.email}")
             raise HTTPException(status_code=401, detail="Invalid credentials")
         
         stored_password = db_user["password"]
         
         if stored_password.startswith('$2b$'):
             if not bcrypt.checkpw(user.password.encode('utf-8'), stored_password.encode('utf-8')):
-                print(f"Invalid password for: {user.phone_number}")
+                print(f"Invalid password for: {user.email}")
                 raise HTTPException(status_code=401, detail="Invalid credentials")
         else:
             if user.password != stored_password:
-                print(f"Invalid password for: {user.phone_number}")
+                print(f"Invalid password for: {user.email}")
                 raise HTTPException(status_code=401, detail="Invalid credentials")
         
-        access_token = create_access_token(data={"sub": user.phone_number})
-        print(f"Login successful for: {user.phone_number}")
+        access_token = create_access_token(data={"sub": user.email})
+        print(f"Login successful for: {user.email}")
         return {"access_token": access_token, "token_type": "bearer"}
     except HTTPException:
         raise
@@ -389,7 +369,7 @@ async def login(user: UserLogin):
 @app.get("/api/me")
 async def get_me(current_user: dict = Depends(get_current_user)):
     return {
-        "phone_number": current_user["phone_number"],
+        "email": current_user["email"],
         "language": current_user["language"],
         "location": current_user["location"]
     }
@@ -413,17 +393,12 @@ async def process_text(request: TextRequest, current_user: dict = Depends(get_cu
         response_text = response.choices[0].message.content
         print(f"AI response generated successfully")
         
-        # Translate query to English for RAG
-        query_english = translate_to_english(request.text, request.language)
-        
         # Log query to DynamoDB
         queries_table.put_item(Item={
             "query_id": str(uuid.uuid4()),
-            "user_phone": current_user["phone_number"],
+            "user_email": current_user["email"],
             "query": request.text,
-            "query_english": query_english,
             "response": response_text,
-            "language": request.language,
             "timestamp": datetime.utcnow().isoformat()
         })
         
@@ -613,18 +588,13 @@ async def process_audio(file: UploadFile = File(...), language: str = "hi", curr
         response_text = ai_response.choices[0].message.content
         print(f"AI response generated successfully")
         
-        # Translate query to English for RAG
-        query_english = translate_to_english(transcript, language)
-        
         # Log query to DynamoDB
         queries_table.put_item(Item={
             "query_id": str(uuid.uuid4()),
-            "user_phone": current_user["phone_number"],
+            "user_email": current_user["email"],
             "query": transcript,
-            "query_english": query_english,
             "response": response_text,
             "query_type": "audio",
-            "language": language,
             "timestamp": datetime.utcnow().isoformat()
         })
         
