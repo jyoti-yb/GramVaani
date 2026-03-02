@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react'
-import { ArrowLeft, Edit2, Save, X, User, Mail, MapPin, Globe, Calendar, MessageSquare, TrendingUp, Activity, Award, Menu } from 'lucide-react'
+import { Edit2, Save, X, User, Mail, MapPin, Globe, Calendar, MessageSquare, TrendingUp, Activity, Award, Menu, LogOut } from 'lucide-react'
 import axios from 'axios'
 
-function Profile({ user, onBack, onUserUpdate }) {
+function Profile({ user, onBack, onUserUpdate, onLogout, onNavigate }) {
   const [isEditing, setIsEditing] = useState(false)
   const [editData, setEditData] = useState({
     phone_number: user?.phone_number || '',
@@ -96,25 +96,35 @@ function Profile({ user, onBack, onUserUpdate }) {
 
   return (
     <div className="profile-container">
-      <div className="profile-hero">
-        <div className="hero-background"></div>
-        <div className="hero-content">
-          <button onClick={onBack} className="back-button">
-            <ArrowLeft size={20} />
-            Back to Dashboard
-          </button>
-          <div className="profile-avatar">
-            <div className="avatar-circle">
-              <User size={40} />
-            </div>
-            <div className="avatar-status"></div>
+      <nav className="app-navbar">
+        <div className="navbar-content">
+          <div className="navbar-brand" onClick={() => onNavigate('home')}>
+            <span className="navbar-icon">🌾</span>
+            <span className="navbar-title">Gram Vaani</span>
           </div>
-          <h1 className="profile-title">Welcome back!</h1>
-          <p className="profile-subtitle">{user?.phone_number}</p>
+          <div className="navbar-menu">
+            <button className="nav-item" onClick={() => onNavigate('home')}>
+              <span>Home</span>
+            </button>
+            <button className="nav-item" onClick={() => onNavigate('features')}>
+              <Award size={18} />
+              <span>Features</span>
+            </button>
+            <button className="nav-item active">
+              <User size={18} />
+              <span>Profile</span>
+            </button>
+            <div className="nav-divider"></div>
+            <div className="nav-user-info">
+              <span className="nav-location">📍 {user?.location?.split(',')[0]}</span>
+            </div>
+            <button className="nav-logout" onClick={onLogout}>
+              <LogOut size={18} />
+            </button>
+          </div>
         </div>
-      </div>
-
-      <div className="profile-content">
+      </nav>
+      <div className="profile-content-wrapper">
         <div className="mobile-menu-toggle">
           <button onClick={() => setShowMobileMenu(!showMobileMenu)} className="menu-button">
             <Menu size={24} />
