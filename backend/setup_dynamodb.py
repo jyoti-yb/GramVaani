@@ -79,6 +79,51 @@ def setup_dynamodb_tables():
         else:
             print(f"✗ Error creating queries table: {e}")
     
+    # Create sessions table
+    try:
+        sessions_table = dynamodb.create_table(
+            TableName='gramvaani_sessions',
+            KeySchema=[
+                {
+                    'AttributeName': 'session_id',
+                    'KeyType': 'HASH'  # Partition key
+                }
+            ],
+            AttributeDefinitions=[
+                {
+                    'AttributeName': 'session_id',
+                    'AttributeType': 'S'
+                },
+                {
+                    'AttributeName': 'user_phone',
+                    'AttributeType': 'S'
+                }
+            ],
+            GlobalSecondaryIndexes=[
+                {
+                    'IndexName': 'user_phone-index',
+                    'KeySchema': [
+                        {
+                            'AttributeName': 'user_phone',
+                            'KeyType': 'HASH'
+                        }
+                    ],
+                    'Projection': {
+                        'ProjectionType': 'ALL'
+                    }
+                }
+            ],
+            BillingMode='PAY_PER_REQUEST'
+        )
+        print("Creating sessions table...")
+        sessions_table.wait_until_exists()
+        print("✓ gramvaani_sessions table created successfully")
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ResourceInUseException':
+            print("✓ gramvaani_sessions table already exists")
+        else:
+            print(f"✗ Error creating sessions table: {e}")
+    
     print("\n✓ DynamoDB setup complete!")
 
 if __name__ == "__main__":

@@ -25,6 +25,7 @@ app = FastAPI()
 dynamodb = boto3.resource('dynamodb', region_name='ap-south-1')
 users_table = dynamodb.Table('gramvaani_users')
 queries_table = dynamodb.Table('gramvaani_user_querie')
+sessions_table = dynamodb.Table('gramvaani_sessions')
 
 print("DynamoDB connection initialized")
 
@@ -378,6 +379,16 @@ async def login(user: UserLogin):
                 raise HTTPException(status_code=401, detail="Invalid credentials")
         
         access_token = create_access_token(data={"sub": user.phone_number})
+        
+        # Create session
+        session_id = str(uuid.uuid4())
+        sessions_table.put_item(Item={
+            "session_id": session_id,
+            "user_phone": user.phone_number,
+            "login_time": datetime.utcnow().isoformat(),
+            "query_ids": []  # Will store query IDs
+        })
+        
         print(f"Login successful for: {user.phone_number}")
         return {"access_token": access_token, "token_type": "bearer"}
     except HTTPException:
@@ -393,6 +404,25 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         "language": current_user["language"],
         "location": current_user["location"]
     }
+
+@app.get("/api/query-history")
+async def get_query_history(current_user: dict = Depends(get_current_user)):
+    """Fetch user's query history from DynamoDB"""
+    try:
+        from boto3.dynamodb.conditions import Key
+        
+        response = queries_table.query(
+            IndexName='user_phone-index',
+            KeyConditionExpression=Key('user_phone').eq(current_user["phone_number"]),
+            ScanIndexForward=False,  # Sort by timestamp descending
+            Limit=50  # Last 50 queries
+        )
+        
+        queries = response.get('Items', [])
+        return {"queries": queries, "count": len(queries)}
+    except Exception as e:
+        print(f"Query history error: {e}")
+        return {"queries": [], "count": 0}
 
 @app.post("/process-text")
 async def process_text(request: TextRequest, current_user: dict = Depends(get_current_user)):

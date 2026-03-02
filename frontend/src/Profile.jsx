@@ -5,7 +5,7 @@ import axios from 'axios'
 function Profile({ user, onBack, onUserUpdate }) {
   const [isEditing, setIsEditing] = useState(false)
   const [editData, setEditData] = useState({
-    email: user?.email || '',
+    phone_number: user?.phone_number || '',
     language: user?.language || 'en',
     location: user?.location || ''
   })
@@ -23,7 +23,7 @@ function Profile({ user, onBack, onUserUpdate }) {
   const fetchUserQueries = async () => {
     try {
       const token = localStorage.getItem('token')
-      const response = await axios.get('http://localhost:8000/api/user-queries', {
+      const response = await axios.get('http://localhost:8000/api/query-history', {
         headers: { Authorization: `Bearer ${token}` }
       })
       const queriesData = response.data.queries || []
@@ -64,7 +64,7 @@ function Profile({ user, onBack, onUserUpdate }) {
 
   const handleCancel = () => {
     setEditData({
-      email: user?.email || '',
+      phone_number: user?.phone_number || '',
       language: user?.language || 'en',
       location: user?.location || ''
     })
@@ -110,7 +110,7 @@ function Profile({ user, onBack, onUserUpdate }) {
             <div className="avatar-status"></div>
           </div>
           <h1 className="profile-title">Welcome back!</h1>
-          <p className="profile-subtitle">{user?.email}</p>
+          <p className="profile-subtitle">{user?.phone_number}</p>
         </div>
       </div>
 
@@ -188,20 +188,11 @@ function Profile({ user, onBack, onUserUpdate }) {
               <div className="profile-fields">
                 <div className="field-group">
                   <div className="field-icon">
-                    <Mail size={20} />
+                    <User size={20} />
                   </div>
                   <div className="field-content">
-                    <label>Email Address</label>
-                    {isEditing ? (
-                      <input
-                        type="email"
-                        value={editData.email}
-                        onChange={(e) => setEditData({...editData, email: e.target.value})}
-                        className="field-input"
-                      />
-                    ) : (
-                      <div className="field-value">{user?.email}</div>
-                    )}
+                    <label>Phone Number</label>
+                    <div className="field-value">{user?.phone_number}</div>
                   </div>
                 </div>
 
