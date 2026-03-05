@@ -53,3 +53,12 @@ logs/
 *.tmp
 *.temp
 test_audio.wav
+
+# Virtual Environment
+venv/
+env/
+.venv/
+ENV/
+
+echo "venv/" >> .gitignore
+git add .gitignore

@@ -1,9 +1,15 @@
+from click import prompt
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+<<<<<<< Updated upstream
 from pydantic import BaseModel, EmailStr
 from openai import AzureOpenAI
+=======
+from pydantic import BaseModel
+
+>>>>>>> Stashed changes
 import os
 import base64
 import azure.cognitiveservices.speech as speechsdk
@@ -20,7 +26,34 @@ from transcribe_service import TranscribeService
 import bcrypt
 from rag.generator import FarmerAssistant
 
+bedrock_agent = boto3.client(
+    "bedrock-agent-runtime",
+    region_name=os.getenv("AWS_REGION", "ap-south-1")
+)
+
+import os
 load_dotenv()
+
+AGENT_ID = os.getenv("BEDROCK_AGENT_ID")
+AGENT_ALIAS_ID = os.getenv("BEDROCK_AGENT_ALIAS_ID")
+
+
+def ask_gramvaani(query: str):
+
+    response = bedrock_agent.invoke_agent(
+        agentId=AGENT_ID,
+        agentAliasId=AGENT_ALIAS_ID,
+        sessionId=str(uuid.uuid4()),
+        inputText=query
+    )
+
+    completion = ""
+
+    for event in response["completion"]:
+        chunk = event["chunk"]["bytes"].decode()
+        completion += chunk
+
+    return completion
 
 app = FastAPI()
 rag_assistant = FarmerAssistant()
@@ -56,12 +89,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Azure OpenAI
-azure_client = AzureOpenAI(
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-    api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview")
-)
+
 
 # Amazon Polly
 polly_client = boto3.client("polly", region_name="ap-south-1")
@@ -112,6 +140,26 @@ LANGUAGE_NAMES = {
     "mr": "Marathi",
 }
 
+<<<<<<< Updated upstream
+=======
+def translate_to_english(text: str, source_lang: str) -> str:
+    """Translate text to English using Azure OpenAI GPT"""
+    if source_lang == "en":
+        return text
+    try:
+        language_name = LANGUAGE_NAMES.get(source_lang, "Unknown")
+        prompt = f"Translate the following {language_name} text to English:\n\n{text}"
+
+        translated = ask_gramvaani(prompt)
+
+        return translated.strip()
+        ##
+        # return response.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"Translation error: {e}")
+        return text
+
+>>>>>>> Stashed changes
 def synthesize_speech(text: str, language: str) -> Optional[str]:
     if not text:
         return None
@@ -473,7 +521,11 @@ async def process_text(request: TextRequest, current_user: dict = Depends(get_cu
         user_location = current_user.get("location", "India")
         print(f"Process text request: {request.text[:50]}...")
         
+<<<<<<< Updated upstream
         response_text = rag_assistant.answer(request.text)
+=======
+        response_text = ask_gramvaani(request.text)
+>>>>>>> Stashed changes
         print(f"AI response generated successfully")
         
         # Log query to MongoDB
@@ -535,17 +587,16 @@ async def get_weather(request: WeatherRequest, current_user: dict = Depends(get_
         
         # Use AI to generate response in selected language
         language_name = LANGUAGE_NAMES.get(request.language, "English")
-        ai_response = azure_client.chat.completions.create(
-            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
-            messages=[
-                {"role": "system", "content": f"You are a weather assistant. Provide weather information in {language_name} language ONLY. Be concise and natural."},
-                {"role": "user", "content": f"Tell me the weather in {city}: {weather_desc}, temperature {temp}°C, humidity {humidity}%"}
-            ],
-            max_tokens=200,
-            temperature=0.7
-        )
-        
-        response_text = ai_response.choices[0].message.content
+        prompt = f"""
+        Explain the weather to a farmer.
+
+        City: {city}
+        Weather: {weather_desc}
+        Temperature: {temp}
+        Humidity: {humidity}
+        """
+
+        response_text = ask_gramvaani(prompt)
         print(f"Weather response in {language_name}: {response_text}")
         
         audio_data = synthesize_speech(response_text, request.language)
@@ -572,17 +623,15 @@ async def get_crop_prices(request: CropPriceRequest, current_user: dict = Depend
         
         # Use AI to generate response in selected language
         language_name = LANGUAGE_NAMES.get(request.language, "English")
-        ai_response = azure_client.chat.completions.create(
-            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
-            messages=[
-                {"role": "system", "content": f"You are a crop price assistant. Provide crop price information in {language_name} language ONLY. Be concise and natural."},
-                {"role": "user", "content": f"Tell me the current price of {request.crop} in {market} market is ₹{price} per quintal"}
-            ],
-            max_tokens=200,
-            temperature=0.7
-        )
-        
-        response_text = ai_response.choices[0].message.content
+        prompt = f"""
+        Provide crop price information for farmers.
+
+        Crop: {request.crop}
+        Market: {market}
+        Price: {price} rupees per quintal
+        """
+
+        response_text = ask_gramvaani(prompt)
         print(f"Crop price response in {language_name}: {response_text}")
         
         audio_data = synthesize_speech(response_text, request.language)
@@ -597,17 +646,14 @@ async def get_gov_schemes(request: SchemeRequest, current_user: dict = Depends(g
         
         language_name = LANGUAGE_NAMES.get(request.language, "English")
         
-        response = azure_client.chat.completions.create(
-            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
-            messages=[
-                {"role": "system", "content": f"You are Gram Vaani, AI assistant for rural India. Provide information about government schemes for farmers in {language_name} language ONLY. Be concise and helpful."},
-                {"role": "user", "content": f"Tell me about government schemes related to {request.topic}"}
-            ],
-            max_tokens=1000,
-            temperature=0.7
-        )
-        
-        response_text = response.choices[0].message.content
+        prompt = f"""
+        Explain government schemes for farmers.
+
+        Topic: {request.topic}
+        Language: {language_name}
+        """
+
+        response_text = ask_gramvaani(prompt)
         print(f"Schemes response in {language_name} generated successfully")
         
         audio_data = synthesize_speech(response_text, request.language)
@@ -668,12 +714,29 @@ async def process_audio(file: UploadFile = File(...), language: str = "hi", curr
         user_location = current_user.get("location", "India")
         language_name = LANGUAGE_NAMES.get(language, "English")
         
+<<<<<<< Updated upstream
         response_text = rag_assistant.answer(transcript)
         print(f"RAG response generated successfully")
         
         # Log query to MongoDB
         await user_queries_collection.insert_one({
             "user_email": current_user["email"],
+=======
+        
+        response_text = ask_gramvaani(transcript)
+        print(f"AI response generated successfully")
+        
+        # Translate query to English for RAG
+        query_english = translate_to_english(transcript, language)
+        
+        # Generate query ID
+        query_id = str(uuid.uuid4())
+        
+        # Log query to DynamoDB
+        queries_table.put_item(Item={
+            "query_id": query_id,
+            "user_phone": current_user["phone_number"],
+>>>>>>> Stashed changes
             "query": transcript,
             "response": response_text,
             "query_type": "audio",
