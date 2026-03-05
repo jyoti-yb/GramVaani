@@ -3,13 +3,8 @@ from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-<<<<<<< Updated upstream
-from pydantic import BaseModel, EmailStr
-from openai import AzureOpenAI
-=======
 from pydantic import BaseModel
 
->>>>>>> Stashed changes
 import os
 import base64
 import azure.cognitiveservices.speech as speechsdk
@@ -140,8 +135,6 @@ LANGUAGE_NAMES = {
     "mr": "Marathi",
 }
 
-<<<<<<< Updated upstream
-=======
 def translate_to_english(text: str, source_lang: str) -> str:
     """Translate text to English using Azure OpenAI GPT"""
     if source_lang == "en":
@@ -159,7 +152,6 @@ def translate_to_english(text: str, source_lang: str) -> str:
         print(f"Translation error: {e}")
         return text
 
->>>>>>> Stashed changes
 def synthesize_speech(text: str, language: str) -> Optional[str]:
     if not text:
         return None
@@ -521,11 +513,7 @@ async def process_text(request: TextRequest, current_user: dict = Depends(get_cu
         user_location = current_user.get("location", "India")
         print(f"Process text request: {request.text[:50]}...")
         
-<<<<<<< Updated upstream
-        response_text = rag_assistant.answer(request.text)
-=======
         response_text = ask_gramvaani(request.text)
->>>>>>> Stashed changes
         print(f"AI response generated successfully")
         
         # Log query to MongoDB
@@ -714,14 +702,6 @@ async def process_audio(file: UploadFile = File(...), language: str = "hi", curr
         user_location = current_user.get("location", "India")
         language_name = LANGUAGE_NAMES.get(language, "English")
         
-<<<<<<< Updated upstream
-        response_text = rag_assistant.answer(transcript)
-        print(f"RAG response generated successfully")
-        
-        # Log query to MongoDB
-        await user_queries_collection.insert_one({
-            "user_email": current_user["email"],
-=======
         
         response_text = ask_gramvaani(transcript)
         print(f"AI response generated successfully")
@@ -736,7 +716,6 @@ async def process_audio(file: UploadFile = File(...), language: str = "hi", curr
         queries_table.put_item(Item={
             "query_id": query_id,
             "user_phone": current_user["phone_number"],
->>>>>>> Stashed changes
             "query": transcript,
             "response": response_text,
             "query_type": "audio",
