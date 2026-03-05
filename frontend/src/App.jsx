@@ -144,6 +144,7 @@ function App() {
     setResponse('')
     setError('')
     setAudioUrl(null)
+    setShowLanding(true)
   }
 
   const startRecording = async () => {
@@ -462,7 +463,8 @@ function App() {
         onUserUpdate={(updatedUser) => setUser({...user, ...updatedUser})}
         onLogout={handleLogout}
         onNavigate={(page) => {
-          if (page === 'home') { setShowProfile(false); setShowFeatures(false); }
+          if (page === 'landing') { setShowLanding(true); setShowProfile(false); setShowFeatures(false); }
+          else if (page === 'home') { setShowProfile(false); setShowFeatures(false); }
           else if (page === 'features') { setShowProfile(false); setShowFeatures(true); }
         }}
       />
@@ -476,7 +478,8 @@ function App() {
         user={user}
         onLogout={handleLogout}
         onNavigate={(page) => {
-          if (page === 'home') { setShowProfile(false); setShowFeatures(false); }
+          if (page === 'landing') { setShowLanding(true); setShowProfile(false); setShowFeatures(false); }
+          else if (page === 'home') { setShowProfile(false); setShowFeatures(false); }
           else if (page === 'profile') { setShowProfile(true); setShowFeatures(false); }
         }}
       />
@@ -487,7 +490,7 @@ function App() {
     <div className="container" key={user?.language}>
       <nav className="app-navbar">
         <div className="navbar-content">
-          <div className="navbar-brand" onClick={() => { setShowProfile(false); setShowFeatures(false); }}>
+          <div className="navbar-brand" onClick={() => { setShowProfile(false); setShowFeatures(false); setShowLanding(true); }}>
             <span className="navbar-icon">🌾</span>
             <span className="navbar-title">Gram Vaani</span>
           </div>

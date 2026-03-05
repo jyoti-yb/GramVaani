@@ -98,7 +98,7 @@ function Profile({ user, onBack, onUserUpdate, onLogout, onNavigate }) {
     <div className="profile-container">
       <nav className="app-navbar">
         <div className="navbar-content">
-          <div className="navbar-brand" onClick={() => onNavigate('home')}>
+          <div className="navbar-brand" onClick={() => onNavigate('landing')}>
             <span className="navbar-icon">🌾</span>
             <span className="navbar-title">Gram Vaani</span>
           </div>
