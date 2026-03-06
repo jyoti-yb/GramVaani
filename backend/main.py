@@ -18,12 +18,18 @@ import bcrypt
 import uuid
 import asyncio
 from pymongo import MongoClient
-from data_aggregator import fetch_all_context_data, format_context_for_llm
+from data_aggregator import fetch_all_context_data, format_context_for_llm, fetch_context_sync
 
 load_dotenv()
 
-# MongoDB connection for hyperlocal data
-mongo_client = MongoClient(os.getenv("MONGO_URL"))
+# MongoDB connection for hyperlocal data (with connection pooling)
+mongo_client = MongoClient(
+    os.getenv("MONGO_URL"),
+    maxPoolSize=10,  # Connection pool
+    minPoolSize=2,
+    maxIdleTimeMS=30000,  # 30 seconds
+    serverSelectionTimeoutMS=5000  # 5 seconds timeout
+)
 mongo_db = mongo_client.gramvani
 hyperlocal_collection = mongo_db.hyperlocal_context
 success_stories_collection = mongo_db.success_stories
@@ -1195,28 +1201,20 @@ async def get_outbreak_map():
 async def process_text(request: TextRequest, current_user: dict = Depends(get_current_user)):
     try:
         user_location = current_user.get("location", "India")
-        print(f"Process text request: {request.text[:50]}...")
+        print(f"Process text: {request.text[:50]}...")
         
-        # FETCH ALL DATA FIRST
-        print("Fetching all relevant data...")
-        context_data = fetch_all_context_data(user_location, request.text)
+        # OPTIMIZED: Fetch minimal context data (use sync version in async context)
+        context_data = fetch_context_sync(user_location, request.text)
         formatted_context = format_context_for_llm(context_data)
         
-        print(f"Context fetched: {len(formatted_context)} characters")
+        print(f"Context: {len(formatted_context)} chars")
         
-        # Pass ALL data to LLM for intelligent response
-        system_prompt = f"""You are Gram Vaani, AI Voice Assistant for Rural India. 
-
-IMPORTANT: Use ONLY the data provided below to answer questions. Do not make up information.
+        # Shorter system prompt
+        system_prompt = f"""You are Gram Vaani, AI assistant for rural India. Use the data below to answer.
 
 {formatted_context}
 
-Guidelines:
-- Answer based on the data provided above
-- If data is not available, say so clearly
-- Be helpful and practical
-- Keep responses concise and actionable
-"""
+Be concise and practical."""
         
         response = azure_client.chat.completions.create(
             model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
@@ -1224,56 +1222,18 @@ Guidelines:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": request.text}
             ],
-            max_tokens=1000,
+            max_tokens=500,  # Reduced from 1000
             temperature=0.7
         )
         
         response_text = response.choices[0].message.content
-        print(f"AI response generated successfully")
         
-        # Translate query to English for RAG
-        query_english = translate_to_english(request.text, request.language)
-        
-        # Generate query ID
-        query_id = str(uuid.uuid4())
-        
-        # Log query to DynamoDB
-        query_item = {
-            "query_id": query_id,
-            "user_phone": current_user["phone_number"],
-            "query": request.text,
-            "query_english": query_english,
-            "response": response_text,
-            "language": request.language,
-            "timestamp": datetime.utcnow().isoformat(),
-            "helpful": None,
-            "feedback_text": None
-        }
-        queries_table.put_item(Item=query_item)
-        print(f"Query stored in DynamoDB: {query_id}")
-        
-        # Update session with query_id
-        try:
-            from boto3.dynamodb.conditions import Key
-            session_response = sessions_table.query(
-                IndexName='user_phone-index',
-                KeyConditionExpression=Key('user_phone').eq(current_user["phone_number"]),
-                ScanIndexForward=False,
-                Limit=1
-            )
-            if session_response.get('Items'):
-                session = session_response['Items'][0]
-                query_ids = session.get('query_ids', [])
-                query_ids.append(query_id)
-                sessions_table.update_item(
-                    Key={'session_id': session['session_id']},
-                    UpdateExpression='SET query_ids = :qids',
-                    ExpressionAttributeValues={':qids': query_ids}
-                )
-        except Exception as e:
-            print(f"Session update error: {e}")
-        
+        # Async TTS generation
         audio_data = synthesize_speech(response_text, request.language)
+        
+        # Log query async (don't wait)
+        query_id = str(uuid.uuid4())
+        asyncio.create_task(log_query_async(query_id, current_user, request.text, response_text, request.language))
 
         return JSONResponse({
             "query_id": query_id,
@@ -1282,7 +1242,23 @@ Guidelines:
         })
     except Exception as e:
         print(f"Process text error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error processing text: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+async def log_query_async(query_id: str, user: dict, query: str, response: str, language: str):
+    """Log query asynchronously without blocking response"""
+    try:
+        query_item = {
+            "query_id": query_id,
+            "user_phone": user["phone_number"],
+            "query": query,
+            "response": response,
+            "language": language,
+            "timestamp": datetime.utcnow().isoformat(),
+            "helpful": None
+        }
+        queries_table.put_item(Item=query_item)
+    except Exception as e:
+        print(f"Log error: {e}")
 
 @app.post("/api/weather")
 async def get_weather(request: WeatherRequest, current_user: dict = Depends(get_current_user)):
@@ -1426,82 +1402,52 @@ async def transcribe_audio(file: UploadFile = File(...), language: str = "hi", c
 @app.post("/process-audio")
 async def process_audio(file: UploadFile = File(...), language: str = "hi", current_user: dict = Depends(get_current_user)):
     try:
-        print(f"Processing audio file: {file.filename}, language: {language}")
+        print(f"Audio: {file.filename}, lang: {language}")
         
         if not file.filename:
-            raise HTTPException(status_code=400, detail="No file provided")
+            raise HTTPException(status_code=400, detail="No file")
         
         file_extension = file.filename.split(".")[-1].lower()
         if file_extension not in ["wav", "mp3", "webm", "ogg"]:
             file_extension = "wav"
         
         audio_bytes = await file.read()
-        print(f"Audio bytes: {len(audio_bytes)}, Language selected: {language}")
         
+        # Transcribe
         transcript = await transcribe_service.transcribe_audio(audio_bytes, file_extension, language)
-        print(f"Transcription successful (language: {language}): {transcript[:100]}...")
+        print(f"Transcript: {transcript[:50]}...")
         
         if not transcript:
-            raise HTTPException(status_code=400, detail="Could not transcribe audio")
+            raise HTTPException(status_code=400, detail="Transcription failed")
         
         user_location = current_user.get("location", "India")
+        
+        # OPTIMIZED: Minimal context (use sync version)
+        context_data = fetch_context_sync(user_location, transcript)
+        formatted_context = format_context_for_llm(context_data)
+        
         language_name = LANGUAGE_NAMES.get(language, "English")
+        system_prompt = f"""You are Gram Vaani. Help with farming. User in {user_location}. Respond in {language_name} ONLY.
+
+{formatted_context}
+
+Be concise."""
         
         ai_response = azure_client.chat.completions.create(
             model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
             messages=[
-                {"role": "system", "content": f"You are Gram Vaani, AI Voice Assistant for Rural India. Help with farming, weather, crops, and government schemes. User is in {user_location}. IMPORTANT: The user is speaking in {language_name}. You MUST respond ONLY in {language_name} language. Do not use any other language in your response."},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": transcript}
             ],
-            max_tokens=1000,
+            max_tokens=500,  # Reduced
             temperature=0.7
         )
         
         response_text = ai_response.choices[0].message.content
-        print(f"AI response generated successfully")
         
-        # Translate query to English for RAG
-        query_english = translate_to_english(transcript, language)
-        
-        # Generate query ID
+        # Async logging
         query_id = str(uuid.uuid4())
-        
-        # Log query to DynamoDB
-        query_item = {
-            "query_id": query_id,
-            "user_phone": current_user["phone_number"],
-            "query": transcript,
-            "query_english": query_english,
-            "response": response_text,
-            "query_type": "audio",
-            "language": language,
-            "timestamp": datetime.utcnow().isoformat(),
-            "helpful": None,
-            "feedback_text": None
-        }
-        queries_table.put_item(Item=query_item)
-        print(f"Audio query stored in DynamoDB: {query_id}")
-        
-        # Update session with query_id
-        try:
-            from boto3.dynamodb.conditions import Key
-            session_response = sessions_table.query(
-                IndexName='user_phone-index',
-                KeyConditionExpression=Key('user_phone').eq(current_user["phone_number"]),
-                ScanIndexForward=False,
-                Limit=1
-            )
-            if session_response.get('Items'):
-                session = session_response['Items'][0]
-                query_ids = session.get('query_ids', [])
-                query_ids.append(query_id)
-                sessions_table.update_item(
-                    Key={'session_id': session['session_id']},
-                    UpdateExpression='SET query_ids = :qids',
-                    ExpressionAttributeValues={':qids': query_ids}
-                )
-        except Exception as e:
-            print(f"Session update error: {e}")
+        asyncio.create_task(log_query_async(query_id, current_user, transcript, response_text, language))
         
         audio_data = synthesize_speech(response_text, language)
 
@@ -1515,7 +1461,5 @@ async def process_audio(file: UploadFile = File(...), language: str = "hi", curr
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Process audio error: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Error processing audio: {str(e)}")
+        print(f"Audio error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")

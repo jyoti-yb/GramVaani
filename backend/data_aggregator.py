@@ -7,24 +7,77 @@ from pymongo import MongoClient
 from datetime import datetime, timedelta
 import requests
 import os
+import asyncio
+from functools import lru_cache
+import hashlib
+import json
 
-def fetch_all_context_data(user_location: str, query: str) -> dict:
-    """
-    Fetch ALL relevant data before LLM processing
-    Returns comprehensive context for accurate responses
-    """
+# Simple in-memory cache with TTL
+_cache = {}
+_cache_ttl = {}
+CACHE_DURATION = 300  # 5 minutes
+
+def get_cache_key(prefix: str, location: str) -> str:
+    """Generate cache key"""
+    return f"{prefix}:{hashlib.md5(location.encode()).hexdigest()}"
+
+def get_cached(key: str):
+    """Get cached data if not expired"""
+    if key in _cache:
+        if datetime.utcnow().timestamp() < _cache_ttl.get(key, 0):
+            return _cache[key]
+        else:
+            del _cache[key]
+            del _cache_ttl[key]
+    return None
+
+def set_cached(key: str, value, ttl: int = CACHE_DURATION):
+    """Set cached data with TTL"""
+    _cache[key] = value
+    _cache_ttl[key] = datetime.utcnow().timestamp() + ttl
+
+async def fetch_all_context_data_async(user_location: str, query: str) -> dict:
+    """Async version - fetch data in parallel"""
+    query_lower = query.lower()
+    
+    # Determine what data is needed based on query
+    needs_weather = any(w in query_lower for w in ['weather', 'temperature', 'rain', 'climate'])
+    needs_prices = any(w in query_lower for w in ['price', 'cost', 'rate', 'market', 'mandi'])
+    
+    # Fetch only what's needed in parallel
+    tasks = [
+        fetch_hyperlocal_data(user_location),
+    ]
+    
+    if needs_weather:
+        tasks.append(fetch_weather_data(user_location))
+    
+    # Always fetch pest/disease data (lightweight)
+    tasks.append(fetch_pest_disease_data(user_location))
+    
+    results = await asyncio.gather(*tasks, return_exceptions=True)
     
     context = {
-        "hyperlocal": None,
-        "weather": None,
-        "pest_outbreaks": [],
-        "disease_reports": [],
+        "hyperlocal": results[0] if not isinstance(results[0], Exception) else None,
+        "weather": results[1] if needs_weather and len(results) > 1 and not isinstance(results[1], Exception) else None,
+        "pest_outbreaks": results[-1].get("pests", []) if not isinstance(results[-1], Exception) else [],
+        "disease_reports": results[-1].get("diseases", []) if not isinstance(results[-1], Exception) else [],
         "success_stories": [],
-        "nearby_reports": [],
-        "seasonal_info": None
+        "seasonal_info": results[0].get("seasonal_info") if results[0] and not isinstance(results[0], Exception) else None
     }
     
-    # 1. Fetch Hyperlocal Agricultural Data
+    if needs_prices:
+        context["crop_prices"] = get_crop_prices(user_location)
+    
+    return context
+
+async def fetch_hyperlocal_data(user_location: str):
+    """Fetch hyperlocal data with caching"""
+    cache_key = get_cache_key("hyperlocal", user_location)
+    cached = get_cached(cache_key)
+    if cached:
+        return cached
+    
     try:
         mongo_client = MongoClient(os.getenv("MONGO_URL"))
         db = mongo_client.gramvani
@@ -33,33 +86,17 @@ def fetch_all_context_data(user_location: str, query: str) -> dict:
         query_filter = {}
         
         if len(location_parts) >= 2:
-            query_filter = {
-                "$or": [
-                    {"district": {"$regex": location_parts[0], "$options": "i"}},
-                    {"state": {"$regex": location_parts[1], "$options": "i"}}
-                ]
-            }
+            query_filter = {"$or": [{"district": {"$regex": location_parts[0], "$options": "i"}}, {"state": {"$regex": location_parts[1], "$options": "i"}}]}
         elif len(location_parts) == 1:
-            query_filter = {
-                "$or": [
-                    {"district": {"$regex": location_parts[0], "$options": "i"}},
-                    {"state": {"$regex": location_parts[0], "$options": "i"}}
-                ]
-            }
+            query_filter = {"$or": [{"district": {"$regex": location_parts[0], "$options": "i"}}, {"state": {"$regex": location_parts[0], "$options": "i"}}]}
         
         hyperlocal_data = db.hyperlocal_context.find_one(query_filter)
         
         if hyperlocal_data:
-            # Get current season
             month = datetime.utcnow().month
-            if month in [6, 7, 8, 9, 10]:
-                season = "kharif"
-            elif month in [11, 12, 1, 2, 3]:
-                season = "rabi"
-            else:
-                season = "summer"
+            season = "kharif" if month in [6,7,8,9,10] else "rabi" if month in [11,12,1,2,3] else "summer"
             
-            context["hyperlocal"] = {
+            result = {
                 "district": hyperlocal_data.get("district"),
                 "state": hyperlocal_data.get("state"),
                 "soil_type": hyperlocal_data.get("soil_type"),
@@ -67,131 +104,147 @@ def fetch_all_context_data(user_location: str, query: str) -> dict:
                 "current_season": season,
                 "recommended_crops": hyperlocal_data.get("crops", {}).get(season, []),
                 "all_crops": hyperlocal_data.get("crops", {}),
-                "pest_alerts": hyperlocal_data.get("pest_alerts", [])
+                "pest_alerts": hyperlocal_data.get("pest_alerts", []),
+                "seasonal_info": {
+                    "season": season,
+                    "months": get_season_months(season),
+                    "activities": get_seasonal_activities(season)
+                }
             }
-            
-            context["seasonal_info"] = {
-                "season": season,
-                "months": get_season_months(season),
-                "activities": get_seasonal_activities(season)
-            }
+            set_cached(cache_key, result, 600)  # Cache for 10 minutes
+            return result
     except Exception as e:
-        print(f"Hyperlocal data fetch error: {e}")
+        print(f"Hyperlocal fetch error: {e}")
+    return None
+
+async def fetch_weather_data(user_location: str):
+    """Fetch weather with caching"""
+    cache_key = get_cache_key("weather", user_location)
+    cached = get_cached(cache_key)
+    if cached:
+        return cached
     
-    # 2. Fetch Weather Data (if query mentions weather)
-    if any(word in query.lower() for word in ['weather', 'temperature', 'rain', 'climate']):
-        try:
-            city = user_location.split(",")[0].strip()
-            api_key = os.getenv("OPENWEATHER_API_KEY")
-            
-            if api_key:
-                url = f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}&units=metric"
-                res = requests.get(url, timeout=10)
-                
-                if res.status_code == 200:
-                    data = res.json()
-                    context["weather"] = {
-                        "city": city,
-                        "description": data["weather"][0]["description"],
-                        "temperature": data["main"]["temp"],
-                        "humidity": data["main"]["humidity"],
-                        "wind_speed": data["wind"]["speed"],
-                        "feels_like": data["main"]["feels_like"]
-                    }
-        except Exception as e:
-            print(f"Weather fetch error: {e}")
-    
-    # 3. Fetch Pest Outbreaks (last 7 days) + Government Pest Data
     try:
-        week_ago = datetime.utcnow() - timedelta(days=7)
+        city = user_location.split(",")[0].strip()
+        api_key = os.getenv("OPENWEATHER_API_KEY")
         
-        # User-reported pests
-        pest_reports = list(db.pest_outbreaks.find({
-            "location": {"$regex": location_parts[0], "$options": "i"},
-            "timestamp": {"$gte": week_ago}
-        }).limit(10))
+        if api_key:
+            url = f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}&units=metric"
+            res = requests.get(url, timeout=5)  # Reduced timeout
+            
+            if res.status_code == 200:
+                data = res.json()
+                result = {
+                    "city": city,
+                    "description": data["weather"][0]["description"],
+                    "temperature": data["main"]["temp"],
+                    "humidity": data["main"]["humidity"],
+                    "wind_speed": data["wind"]["speed"],
+                    "feels_like": data["main"]["feels_like"]
+                }
+                set_cached(cache_key, result, 300)  # Cache for 5 minutes
+                return result
+    except Exception as e:
+        print(f"Weather fetch error: {e}")
+    return None
+
+async def fetch_pest_disease_data(user_location: str):
+    """Fetch pest/disease data with caching - only recent government data"""
+    cache_key = get_cache_key("pest_disease", user_location)
+    cached = get_cached(cache_key)
+    if cached:
+        return cached
+    
+    try:
+        mongo_client = MongoClient(os.getenv("MONGO_URL"))
+        db = mongo_client.gramvani
         
-        # Government pest data
+        location_parts = [p.strip() for p in user_location.split(",")]
+        state_query = location_parts[1] if len(location_parts) > 1 else location_parts[0]
+        
+        # Only fetch top 3 most relevant
         govt_pest_reports = list(db.pest_reports.find({
-            "state": {"$regex": location_parts[0] if len(location_parts) > 0 else "", "$options": "i"}
-        }).limit(5))
+            "state": {"$regex": state_query, "$options": "i"}
+        }).limit(3))
         
-        context["pest_outbreaks"] = [
-            {
-                "pest_name": r.get("pest_name"),
-                "crop": r.get("crop"),
-                "severity": r.get("severity"),
-                "days_ago": (datetime.utcnow() - r.get("timestamp")).days if isinstance(r.get("timestamp"), datetime) else 0,
-                "source": "Community Report"
-            }
-            for r in pest_reports
-        ]
-        
-        # Add government pest data
-        for r in govt_pest_reports:
-            context["pest_outbreaks"].append({
-                "pest_name": r.get("pest_name"),
-                "crop": r.get("crop"),
-                "severity": r.get("severity"),
-                "description": r.get("description"),
-                "source": r.get("source", "Government Data")
-            })
-    except Exception as e:
-        print(f"Pest outbreak fetch error: {e}")
-    
-    # 4. Fetch Disease Reports from Government Data
-    try:
         govt_disease_reports = list(db.disease_reports.find({
-            "state": {"$regex": location_parts[0] if len(location_parts) > 0 else "", "$options": "i"}
-        }).limit(5))
+            "state": {"$regex": state_query, "$options": "i"}
+        }).limit(3))
         
-        context["disease_reports"] = [
-            {
-                "disease_name": r.get("disease_name"),
-                "crop": r.get("crop"),
-                "severity": r.get("severity"),
-                "description": r.get("description"),
-                "source": r.get("source", "Government Data")
-            }
-            for r in govt_disease_reports
-        ]
-    except Exception as e:
-        print(f"Disease reports fetch error: {e}")
-    
-    # 5. Fetch Success Stories (nearby farmers)
-    try:
-        stories = list(db.success_stories.find({
-            "location": {"$regex": location_parts[0], "$options": "i"}
-        }).limit(5))
-        
-        context["success_stories"] = [
-            {
-                "farmer": s.get("farmer"),
-                "crop": s.get("crop"),
-                "achievement": s.get("achievement"),
-                "method": s.get("method")
-            }
-            for s in stories
-        ]
-    except Exception as e:
-        print(f"Success stories fetch error: {e}")
-    
-    # 6. Fetch Crop Prices (if query mentions prices)
-    if any(word in query.lower() for word in ['price', 'cost', 'rate', 'market', 'mandi']):
-        context["crop_prices"] = {
-            "market": location_parts[0],
-            "prices": {
-                "wheat": 2000,
-                "rice": 2400,
-                "cotton": 6000,
-                "soybean": 4400,
-                "onion": 3000,
-                "potato": 1400,
-                "tomato": 3600
-            },
-            "unit": "₹ per quintal",
-            "last_updated": "Today"
+        result = {
+            "pests": [{"pest_name": r.get("pest_name"), "crop": r.get("crop"), "severity": r.get("severity"), "description": r.get("description"), "source": "Government Data"} for r in govt_pest_reports],
+            "diseases": [{"disease_name": r.get("disease_name"), "crop": r.get("crop"), "severity": r.get("severity"), "description": r.get("description"), "source": "Government Data"} for r in govt_disease_reports]
         }
+        
+        set_cached(cache_key, result, 600)  # Cache for 10 minutes
+        return result
+    except Exception as e:
+        print(f"Pest/disease fetch error: {e}")
+    return {"pests": [], "diseases": []}
+
+def get_crop_prices(user_location: str):
+    """Get crop prices - static data, no DB call"""
+    return {
+        "market": user_location.split(",")[0],
+        "prices": {"wheat": 2000, "rice": 2400, "cotton": 6000, "soybean": 4400, "onion": 3000, "potato": 1400, "tomato": 3600},
+        "unit": "₹ per quintal",
+        "last_updated": "Today"
+    }
+
+def fetch_all_context_data(user_location: str, query: str) -> dict:
+    """Sync wrapper for async function"""
+    try:
+        # Try to get existing event loop
+        try:
+            loop = asyncio.get_running_loop()
+            # Loop is already running, use sync fallback
+            return fetch_context_sync(user_location, query)
+        except RuntimeError:
+            # No running loop, create new one
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                return loop.run_until_complete(fetch_all_context_data_async(user_location, query))
+            finally:
+                loop.close()
+    except Exception as e:
+        print(f"Async fetch error: {e}")
+        # Fallback to sync version
+        return fetch_context_sync(user_location, query)
+
+def fetch_context_sync(user_location: str, query: str) -> dict:
+    """Fallback sync version with minimal data"""
+    context = {
+        "hyperlocal": None,
+        "weather": None,
+        "pest_outbreaks": [],
+        "disease_reports": [],
+        "success_stories": [],
+        "seasonal_info": None
+    }
+    
+    # Fetch only essential data synchronously
+    try:
+        mongo_client = MongoClient(os.getenv("MONGO_URL"))
+        db = mongo_client.gramvani
+        location_parts = [p.strip() for p in user_location.split(",")]
+        
+        # Only hyperlocal data
+        query_filter = {"$or": [{"district": {"$regex": location_parts[0], "$options": "i"}}]} if location_parts else {}
+        hyperlocal_data = db.hyperlocal_context.find_one(query_filter)
+        
+        if hyperlocal_data:
+            month = datetime.utcnow().month
+            season = "kharif" if month in [6,7,8,9,10] else "rabi" if month in [11,12,1,2,3] else "summer"
+            context["hyperlocal"] = {
+                "district": hyperlocal_data.get("district"),
+                "state": hyperlocal_data.get("state"),
+                "soil_type": hyperlocal_data.get("soil_type"),
+                "current_season": season,
+                "recommended_crops": hyperlocal_data.get("crops", {}).get(season, [])
+            }
+    except Exception as e:
+        print(f"Sync fetch error: {e}")
     
     return context
 
@@ -230,72 +283,43 @@ def get_seasonal_activities(season: str) -> list:
 
 def format_context_for_llm(context: dict) -> str:
     """
-    Format fetched data into structured prompt for LLM
+    Format fetched data into concise prompt for LLM
     """
-    
     prompt_parts = []
     
-    # Hyperlocal context
+    # Hyperlocal context (minimal)
     if context.get("hyperlocal"):
         h = context["hyperlocal"]
-        prompt_parts.append(f"""
-LOCATION DATA:
-- District: {h['district']}, {h['state']}
-- Soil Type: {h['soil_type']}
-- Average Rainfall: {h['rainfall']}
-- Current Season: {h['current_season']} ({context['seasonal_info']['months']})
-- Recommended Crops for {h['current_season']}: {', '.join(h['recommended_crops'])}
-- All Crops by Season:
-  * Kharif: {', '.join(h['all_crops'].get('kharif', []))}
-  * Rabi: {', '.join(h['all_crops'].get('rabi', []))}
-  * Summer: {', '.join(h['all_crops'].get('summer', []))}
-- Pest Alerts: {', '.join(h['pest_alerts']) if h['pest_alerts'] else 'None'}
-""")
+        crops = ', '.join(h.get('recommended_crops', [])[:5])  # Limit to 5
+        prompt_parts.append(f"LOCATION: {h.get('district', 'Unknown')}, {h.get('state', 'Unknown')} | Soil: {h.get('soil_type', 'Unknown')} | Season: {h.get('current_season', 'Unknown')} | Crops: {crops}")
     
-    # Weather data
+    # Weather (compact)
     if context.get("weather"):
         w = context["weather"]
-        prompt_parts.append(f"""
-CURRENT WEATHER ({w['city']}):
-- Condition: {w['description']}
-- Temperature: {w['temperature']}°C (Feels like {w['feels_like']}°C)
-- Humidity: {w['humidity']}%
-- Wind Speed: {w['wind_speed']} m/s
-""")
+        prompt_parts.append(f"WEATHER: {w['description']}, {w['temperature']}°C, {w['humidity']}% humidity")
     
-    # Pest outbreaks
+    # Pest outbreaks (top 3 only)
     if context.get("pest_outbreaks"):
-        prompt_parts.append("\nRECENT PEST OUTBREAKS:")
-        for pest in context["pest_outbreaks"]:
-            source = pest.get('source', 'Unknown')
-            if 'days_ago' in pest:
-                prompt_parts.append(f"- {pest['pest_name']} in {pest['crop']} ({pest['severity']} severity, {pest['days_ago']} days ago) [{source}]")
-            else:
-                prompt_parts.append(f"- {pest['pest_name']} in {pest['crop']} ({pest['severity']} severity) - {pest.get('description', '')} [{source}]")
+        pests = context["pest_outbreaks"][:3]
+        if pests:
+            pest_list = [f"{p['pest_name']} in {p['crop']}" for p in pests]
+            prompt_parts.append(f"PEST ALERTS: {', '.join(pest_list)}")
     
-    # Disease reports
+    # Disease reports (top 3 only)
     if context.get("disease_reports"):
-        prompt_parts.append("\nCROP DISEASE ALERTS:")
-        for disease in context["disease_reports"]:
-            prompt_parts.append(f"- {disease['disease_name']} in {disease['crop']} ({disease['severity']} severity) - {disease.get('description', '')} [{disease.get('source', 'Unknown')}]")
+        diseases = context["disease_reports"][:3]
+        if diseases:
+            disease_list = [f"{d['disease_name']} in {d['crop']}" for d in diseases]
+            prompt_parts.append(f"DISEASE ALERTS: {', '.join(disease_list)}")
     
-    # Success stories
-    if context.get("success_stories"):
-        prompt_parts.append("\nNEARBY FARMER SUCCESS STORIES:")
-        for story in context["success_stories"]:
-            prompt_parts.append(f"- {story['farmer']}: {story['achievement']} ({story['method']})")
+    # Skip success stories for faster response
     
-    # Crop prices
+    # Crop prices (compact)
     if context.get("crop_prices"):
         p = context["crop_prices"]
-        prompt_parts.append(f"\nCURRENT MARKET PRICES ({p['market']} Market):")
-        for crop, price in p["prices"].items():
-            prompt_parts.append(f"- {crop.capitalize()}: ₹{price} per quintal")
+        prices = [f"{c}: ₹{pr}" for c, pr in list(p["prices"].items())[:4]]
+        prompt_parts.append(f"PRICES: {', '.join(prices)} per quintal")
     
-    # Seasonal activities
-    if context.get("seasonal_info"):
-        prompt_parts.append(f"\nSEASONAL ACTIVITIES ({context['seasonal_info']['season'].upper()}):")
-        for activity in context['seasonal_info']['activities']:
-            prompt_parts.append(f"- {activity}")
+    # Skip seasonal activities for speed
     
-    return "\n".join(prompt_parts)
+    return " | ".join(prompt_parts) if prompt_parts else "No specific context available"
