@@ -27,6 +27,7 @@ users_table = dynamodb.Table('gramvaani_users')
 queries_table = dynamodb.Table('gramvaani_user_querie')
 sessions_table = dynamodb.Table('gramvaani_sessions')
 village_trust_table = dynamodb.Table('gramvaani_village_trust')
+community_reports_table = dynamodb.Table('gramvaani_community_reports')
 
 print("DynamoDB connection initialized")
 
@@ -221,6 +222,13 @@ class FeedbackRequest(BaseModel):
     query_id: str
     helpful: bool
     feedback_text: Optional[str] = None
+
+class CommunityReportRequest(BaseModel):
+    report_type: str  # pest, disease, weather, success
+    crop: Optional[str] = None
+    description: str
+    severity: Optional[str] = "medium"  # low, medium, high
+    language: str = "en"
 
 # Auth functions
 def create_access_token(data: dict):
@@ -499,6 +507,214 @@ async def get_village_trust(village_id: str):
         print(f"Village trust fetch error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/community-report")
+async def submit_community_report(report: CommunityReportRequest, current_user: dict = Depends(get_current_user)):
+    """Submit a community report (pest, disease, weather observation, success story)"""
+    try:
+        report_id = str(uuid.uuid4())
+        village_id = current_user.get('location', 'Unknown').split(',')[0].strip()
+        
+        # Translate description to English
+        description_english = translate_to_english(report.description, report.language)
+        
+        report_item = {
+            'report_id': report_id,
+            'user_phone': current_user['phone_number'],
+            'village_id': village_id,
+            'report_type': report.report_type,
+            'crop': report.crop or 'general',
+            'description': report.description,
+            'description_english': description_english,
+            'severity': report.severity,
+            'language': report.language,
+            'timestamp': datetime.utcnow().isoformat(),
+            'verified': False,
+            'validation_count': 0,
+            'validators': []
+        }
+        
+        community_reports_table.put_item(Item=report_item)
+        
+        # Check for outbreak pattern (5+ reports in same village within 7 days)
+        from boto3.dynamodb.conditions import Key
+        from datetime import timedelta
+        
+        week_ago = (datetime.utcnow() - timedelta(days=7)).isoformat()
+        recent_reports = community_reports_table.query(
+            IndexName='village_id-timestamp-index',
+            KeyConditionExpression=Key('village_id').eq(village_id) & Key('timestamp').gt(week_ago),
+            FilterExpression='report_type = :rt',
+            ExpressionAttributeValues={':rt': report.report_type}
+        )
+        
+        outbreak_detected = len(recent_reports.get('Items', [])) >= 5
+        
+        return {
+            'status': 'success',
+            'report_id': report_id,
+            'message': 'Report submitted successfully',
+            'outbreak_alert': outbreak_detected,
+            'similar_reports': len(recent_reports.get('Items', []))
+        }
+    except Exception as e:
+        print(f"Community report error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/community-reports")
+async def get_community_reports(current_user: dict = Depends(get_current_user), limit: int = 20):
+    """Get recent community reports for user's village"""
+    try:
+        from boto3.dynamodb.conditions import Key
+        
+        village_id = current_user.get('location', 'Unknown').split(',')[0].strip()
+        
+        response = community_reports_table.query(
+            IndexName='village_id-timestamp-index',
+            KeyConditionExpression=Key('village_id').eq(village_id),
+            ScanIndexForward=False,
+            Limit=limit
+        )
+        
+        return {'reports': response.get('Items', []), 'count': len(response.get('Items', []))}
+    except Exception as e:
+        print(f"Fetch reports error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/validate-report/{report_id}")
+async def validate_report(report_id: str, helpful: bool, current_user: dict = Depends(get_current_user)):
+    """Peer validation: farmers validate other farmers' reports"""
+    try:
+        response = community_reports_table.get_item(Key={'report_id': report_id})
+        report = response.get('Item')
+        
+        if not report:
+            raise HTTPException(status_code=404, detail="Report not found")
+        
+        validators = report.get('validators', [])
+        user_phone = current_user['phone_number']
+        
+        # Prevent duplicate validation
+        if user_phone in validators:
+            return {'status': 'already_validated', 'message': 'You have already validated this report'}
+        
+        validators.append(user_phone)
+        validation_count = report.get('validation_count', 0) + (1 if helpful else 0)
+        
+        # Mark as verified if 3+ farmers validate
+        verified = len(validators) >= 3 and validation_count >= 2
+        
+        community_reports_table.update_item(
+            Key={'report_id': report_id},
+            UpdateExpression='SET validators = :v, validation_count = :vc, verified = :vf',
+            ExpressionAttributeValues={
+                ':v': validators,
+                ':vc': validation_count,
+                ':vf': verified
+            }
+        )
+        
+        return {
+            'status': 'success',
+            'verified': verified,
+            'validation_count': validation_count,
+            'total_validators': len(validators)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Validation error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/village-leaderboard")
+async def get_village_leaderboard(limit: int = 10):
+    """Get top villages by trust score (Gold/Silver/Bronze)"""
+    try:
+        response = village_trust_table.scan()
+        villages = response.get('Items', [])
+        
+        # Sort by trust score
+        villages.sort(key=lambda x: x.get('trust_score', 0), reverse=True)
+        
+        # Assign tiers
+        for i, village in enumerate(villages[:limit]):
+            score = village.get('trust_score', 0)
+            if score >= 80:
+                village['tier'] = 'Gold'
+                village['tier_icon'] = '🥇'
+            elif score >= 60:
+                village['tier'] = 'Silver'
+                village['tier_icon'] = '🥈'
+            else:
+                village['tier'] = 'Bronze'
+                village['tier_icon'] = '🥉'
+            village['rank'] = i + 1
+        
+        return {'leaderboard': villages[:limit], 'total_villages': len(villages)}
+    except Exception as e:
+        print(f"Leaderboard error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/outbreak-map")
+async def get_outbreak_map():
+    """Get pest/disease outbreak patterns across villages"""
+    try:
+        from boto3.dynamodb.conditions import Key
+        from datetime import timedelta
+        from collections import defaultdict
+        
+        week_ago = (datetime.utcnow() - timedelta(days=7)).isoformat()
+        
+        # Get all recent reports
+        response = community_reports_table.scan(
+            FilterExpression='#ts > :week_ago AND (report_type = :pest OR report_type = :disease)',
+            ExpressionAttributeNames={'#ts': 'timestamp'},
+            ExpressionAttributeValues={
+                ':week_ago': week_ago,
+                ':pest': 'pest',
+                ':disease': 'disease'
+            }
+        )
+        
+        reports = response.get('Items', [])
+        
+        # Group by village and type
+        outbreak_data = defaultdict(lambda: {'pest': 0, 'disease': 0, 'reports': []})
+        
+        for report in reports:
+            village = report.get('village_id', 'Unknown')
+            report_type = report.get('report_type')
+            outbreak_data[village][report_type] += 1
+            outbreak_data[village]['reports'].append({
+                'type': report_type,
+                'crop': report.get('crop'),
+                'description': report.get('description_english', report.get('description')),
+                'severity': report.get('severity'),
+                'timestamp': report.get('timestamp')
+            })
+        
+        # Identify outbreaks (5+ reports)
+        outbreaks = []
+        for village, data in outbreak_data.items():
+            total = data['pest'] + data['disease']
+            if total >= 5:
+                outbreaks.append({
+                    'village': village,
+                    'pest_count': data['pest'],
+                    'disease_count': data['disease'],
+                    'total_reports': total,
+                    'alert_level': 'high' if total >= 10 else 'medium',
+                    'recent_reports': data['reports'][:5]
+                })
+        
+        return {
+            'outbreaks': outbreaks,
+            'total_reports': len(reports),
+            'affected_villages': len(outbreak_data)
+        }
+    except Exception as e:
+        print(f"Outbreak map error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/process-text")
 async def process_text(request: TextRequest, current_user: dict = Depends(get_current_user)):
     try:
@@ -525,7 +741,7 @@ async def process_text(request: TextRequest, current_user: dict = Depends(get_cu
         query_id = str(uuid.uuid4())
         
         # Log query to DynamoDB
-        queries_table.put_item(Item={
+        query_item = {
             "query_id": query_id,
             "user_phone": current_user["phone_number"],
             "query": request.text,
@@ -533,9 +749,32 @@ async def process_text(request: TextRequest, current_user: dict = Depends(get_cu
             "response": response_text,
             "language": request.language,
             "timestamp": datetime.utcnow().isoformat(),
-            "helpful": None,  # Will be updated by feedback
+            "helpful": None,
             "feedback_text": None
-        })
+        }
+        queries_table.put_item(Item=query_item)
+        print(f"Query stored in DynamoDB: {query_id}")
+        
+        # Update session with query_id
+        try:
+            from boto3.dynamodb.conditions import Key
+            session_response = sessions_table.query(
+                IndexName='user_phone-index',
+                KeyConditionExpression=Key('user_phone').eq(current_user["phone_number"]),
+                ScanIndexForward=False,
+                Limit=1
+            )
+            if session_response.get('Items'):
+                session = session_response['Items'][0]
+                query_ids = session.get('query_ids', [])
+                query_ids.append(query_id)
+                sessions_table.update_item(
+                    Key={'session_id': session['session_id']},
+                    UpdateExpression='SET query_ids = :qids',
+                    ExpressionAttributeValues={':qids': query_ids}
+                )
+        except Exception as e:
+            print(f"Session update error: {e}")
         
         audio_data = synthesize_speech(response_text, request.language)
 
@@ -731,7 +970,7 @@ async def process_audio(file: UploadFile = File(...), language: str = "hi", curr
         query_id = str(uuid.uuid4())
         
         # Log query to DynamoDB
-        queries_table.put_item(Item={
+        query_item = {
             "query_id": query_id,
             "user_phone": current_user["phone_number"],
             "query": transcript,
@@ -742,7 +981,30 @@ async def process_audio(file: UploadFile = File(...), language: str = "hi", curr
             "timestamp": datetime.utcnow().isoformat(),
             "helpful": None,
             "feedback_text": None
-        })
+        }
+        queries_table.put_item(Item=query_item)
+        print(f"Audio query stored in DynamoDB: {query_id}")
+        
+        # Update session with query_id
+        try:
+            from boto3.dynamodb.conditions import Key
+            session_response = sessions_table.query(
+                IndexName='user_phone-index',
+                KeyConditionExpression=Key('user_phone').eq(current_user["phone_number"]),
+                ScanIndexForward=False,
+                Limit=1
+            )
+            if session_response.get('Items'):
+                session = session_response['Items'][0]
+                query_ids = session.get('query_ids', [])
+                query_ids.append(query_id)
+                sessions_table.update_item(
+                    Key={'session_id': session['session_id']},
+                    UpdateExpression='SET query_ids = :qids',
+                    ExpressionAttributeValues={':qids': query_ids}
+                )
+        except Exception as e:
+            print(f"Session update error: {e}")
         
         audio_data = synthesize_speech(response_text, language)
 

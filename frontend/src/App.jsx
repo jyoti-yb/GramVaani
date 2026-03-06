@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { Mic, MicOff, Play, Pause, Loader, LogOut, User, Award } from 'lucide-react'
+import { Mic, MicOff, Play, Pause, Loader, LogOut, User, Award, Users } from 'lucide-react'
 import axios from 'axios'
 import Auth from './Auth'
 import Profile from './Profile'
 import Landing from './Landing'
 import Features from './Features'
+import Community from './Community'
 import { API_URL } from './config'
 import { getTranslation } from './translations'
 
@@ -21,12 +22,17 @@ function App() {
   const [textInput, setTextInput] = useState('')
   const [inputMode, setInputMode] = useState('voice')
   const [language, setLanguage] = useState('en')
+  const [uiLanguage, setUiLanguage] = useState('en')
   const [showModal, setShowModal] = useState(false)
   const [modalType, setModalType] = useState('')
   const [modalInput, setModalInput] = useState('')
   const [modalLocation, setModalLocation] = useState('')
   const [showProfile, setShowProfile] = useState(false)
   const [showFeatures, setShowFeatures] = useState(false)
+  const [showCommunity, setShowCommunity] = useState(false)
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false)
+  const [currentQueryId, setCurrentQueryId] = useState(null)
+  const [feedbackText, setFeedbackText] = useState('')
 
   const mediaRecorderRef = useRef(null)
   const audioRef = useRef(null)
@@ -105,7 +111,7 @@ function App() {
     }
   }, [isAuthenticated])
 
-  const t = (key) => getTranslation(user?.language || 'en', key)
+  const t = (key) => getTranslation(uiLanguage, key)
 
   const checkAuthStatus = async () => {
     const token = localStorage.getItem('token')
@@ -116,6 +122,7 @@ function App() {
         })
         setUser(response.data)
         setLanguage(response.data.language)
+        setUiLanguage(response.data.language)
         setIsAuthenticated(true)
       } catch (error) {
         localStorage.removeItem('token')
@@ -131,6 +138,7 @@ function App() {
       })
       setUser(response.data)
       setLanguage(response.data.language)
+      setUiLanguage(response.data.language)
       setIsAuthenticated(true)
     } catch (error) {
       localStorage.removeItem('token')
@@ -208,8 +216,11 @@ function App() {
       })
       setResponse({
         transcript: response.data.transcript,
-        response_text: response.data.response_text
+        response_text: response.data.response_text,
+        query_id: response.data.query_id
       })
+      setCurrentQueryId(response.data.query_id)
+      setTimeout(() => setShowFeedbackModal(true), 2000)
       if (response.data.audio_data) {
         const audioBlob = new Blob([Uint8Array.from(atob(response.data.audio_data), c => c.charCodeAt(0))], { type: 'audio/wav' })
         const audioUrl = URL.createObjectURL(audioBlob)
@@ -253,8 +264,11 @@ function App() {
       })
       setResponse({
         transcript: textInput,
-        response_text: response.data.response_text || response.data
+        response_text: response.data.response_text || response.data,
+        query_id: response.data.query_id
       })
+      setCurrentQueryId(response.data.query_id)
+      setTimeout(() => setShowFeedbackModal(true), 2000)
       if (response.data.audio_data) {
         const audioBlob = new Blob([Uint8Array.from(atob(response.data.audio_data), c => c.charCodeAt(0))], { type: 'audio/wav' })
         const audioUrl = URL.createObjectURL(audioBlob)
@@ -289,6 +303,23 @@ function App() {
   }
 
   const handleAudioEnded = () => setIsPlaying(false)
+
+  const submitFeedback = async (helpful) => {
+    try {
+      const token = localStorage.getItem('token')
+      await axios.post(`${API_URL}/api/feedback`, {
+        query_id: currentQueryId,
+        helpful,
+        feedback_text: feedbackText
+      }, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      setShowFeedbackModal(false)
+      setFeedbackText('')
+    } catch (err) {
+      console.error('Feedback error:', err)
+    }
+  }
 
   // -------------------- Modal Handlers --------------------
   const openModal = (type) => {
@@ -457,7 +488,7 @@ function App() {
   if (showProfile) {
     return (
       <Profile 
-        user={user} 
+        user={{...user, language: uiLanguage}} 
         onBack={() => setShowProfile(false)}
         onUserUpdate={(updatedUser) => setUser({...user, ...updatedUser})}
         onLogout={handleLogout}
@@ -473,7 +504,7 @@ function App() {
     return (
       <Features 
         onBack={() => setShowFeatures(false)}
-        user={user}
+        user={{...user, language: uiLanguage}}
         onLogout={handleLogout}
         onNavigate={(page) => {
           if (page === 'home') { setShowProfile(false); setShowFeatures(false); }
@@ -483,25 +514,45 @@ function App() {
     )
   }
 
+  if (showCommunity) {
+    return (
+      <Community 
+        user={{...user, language: uiLanguage}}
+        onBack={() => setShowCommunity(false)}
+        onLogout={handleLogout}
+        onNavigate={(page) => {
+          if (page === 'landing') { setShowLanding(true); setShowProfile(false); setShowFeatures(false); setShowCommunity(false); }
+          else if (page === 'home') { setShowProfile(false); setShowFeatures(false); setShowCommunity(false); }
+          else if (page === 'profile') { setShowProfile(true); setShowFeatures(false); setShowCommunity(false); }
+          else if (page === 'features') { setShowProfile(false); setShowFeatures(true); setShowCommunity(false); }
+        }}
+      />
+    )
+  }
+
   return (
     <div className="container" key={user?.language}>
       <nav className="app-navbar">
         <div className="navbar-content">
-          <div className="navbar-brand" onClick={() => { setShowProfile(false); setShowFeatures(false); }}>
+          <div className="navbar-brand" onClick={() => { setShowProfile(false); setShowFeatures(false); setShowCommunity(false); }}>
             <span className="navbar-icon">🌾</span>
             <span className="navbar-title">Gram Vaani</span>
           </div>
           <div className="navbar-menu">
-            <button className="nav-item" onClick={() => { setShowProfile(false); setShowFeatures(false); }}>
-              <span>Home</span>
+            <button className="nav-item" onClick={() => { setShowProfile(false); setShowFeatures(false); setShowCommunity(false); }}>
+              <span>{t('home')}</span>
+            </button>
+            <button className="nav-item" onClick={() => setShowCommunity(true)}>
+              <Users size={18} />
+              <span>{t('community')}</span>
             </button>
             <button className="nav-item" onClick={() => setShowFeatures(true)}>
               <Award size={18} />
-              <span>Features</span>
+              <span>{t('features')}</span>
             </button>
             <button className="nav-item" onClick={() => setShowProfile(true)}>
               <User size={18} />
-              <span>Profile</span>
+              <span>{t('profile')}</span>
             </button>
             <div className="nav-divider"></div>
             <div className="nav-user-info">
@@ -528,11 +579,11 @@ function App() {
             <div className="status-text">
               {isRecording ? `🎤 ${t('listening')}` :
                 isProcessing ? `🤖 ${t('processing')}` :
-                  `👆 ${t('clickToSpeak')}`}
+                  `👆 ${t('askQuestion')}`}
             </div>
             <div className="language-selector-inline">
               <div className="language-icon">🌐</div>
-              <select value={language} onChange={(e) => setLanguage(e.target.value)}>
+              <select value={uiLanguage} onChange={(e) => setUiLanguage(e.target.value)}>
                 <option value="en">🇺🇸 English</option>
                 <option value="hi">🇮🇳 Hindi</option>
                 <option value="ta">🇮🇳 Tamil</option>
@@ -547,14 +598,14 @@ function App() {
           </div>
         ) : (
           <div className="text-section">
-            <textarea value={textInput} onChange={(e) => setTextInput(e.target.value)} placeholder={t('typeQuestion')} className="text-input" rows={3} disabled={isProcessing} />
+            <textarea value={textInput} onChange={(e) => setTextInput(e.target.value)} placeholder={t('typeMessage')} className="text-input" rows={3} disabled={isProcessing} />
             <div className="text-controls">
               <button className="submit-button" onClick={processText} disabled={isProcessing || !textInput.trim()}>
-                {isProcessing ? <><Loader className="loading" size={16} /> {t('processing')}</> : t('submit')}
+                {isProcessing ? <><Loader className="loading" size={16} /> {t('processing')}</> : t('send')}
               </button>
               <div className="language-selector-inline">
                 <div className="language-icon">🌐</div>
-                <select value={language} onChange={(e) => setLanguage(e.target.value)}>
+                <select value={uiLanguage} onChange={(e) => setUiLanguage(e.target.value)}>
                   <option value="en">🇺🇸 English</option>
                   <option value="hi">🇮🇳 Hindi</option>
                   <option value="ta">🇮🇳 Tamil</option>
@@ -574,15 +625,13 @@ function App() {
 
         {response && (
           <div className="response-section">
-            <h3>📝 {t('whatYouSaid')}</h3>
-            <p className="response-text">{response.transcript}</p>
-            <h3>💬 {t('response')}</h3>
+            <h3>📝 {response.transcript}</h3>
             <p className="response-text">{response.response_text}</p>
             {audioUrl && (
               <div className="audio-controls">
                 <button className="play-button" onClick={playAudio}>
                   {isPlaying ? <Pause size={20} /> : <Play size={20} />}
-                  {isPlaying ? t('pause') : t('playResponse')}
+                  {isPlaying ? t('pause') : t('playAudio')}
                 </button>
                 <audio ref={audioRef} src={audioUrl} onEnded={handleAudioEnded} />
               </div>
@@ -688,6 +737,35 @@ function App() {
               <button className="cancel-button" onClick={closeModal}>Cancel</button>
               <button className="submit-button" onClick={handleModalSubmit} disabled={!modalInput.trim()}>Get Information</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Feedback Modal */}
+      {showFeedbackModal && (
+        <div className="feedback-notification">
+          <div className="feedback-notification-content">
+            <div className="feedback-notification-header">
+              <span className="feedback-icon">💬</span>
+              <h4>{t('wasThisHelpful')}</h4>
+              <button className="feedback-close" onClick={() => setShowFeedbackModal(false)}>×</button>
+            </div>
+            <p className="feedback-subtitle">Your feedback builds village trust scores</p>
+            <div className="feedback-actions">
+              <button className="feedback-btn-small helpful" onClick={() => submitFeedback(true)}>
+                👍 {t('validate')}
+              </button>
+              <button className="feedback-btn-small not-helpful" onClick={() => submitFeedback(false)}>
+                👎
+              </button>
+            </div>
+            <textarea
+              value={feedbackText}
+              onChange={(e) => setFeedbackText(e.target.value)}
+              placeholder={t('additionalFeedback')}
+              className="feedback-textarea-small"
+              rows={2}
+            />
           </div>
         </div>
       )}

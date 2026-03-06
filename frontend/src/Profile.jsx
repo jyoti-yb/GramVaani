@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react'
 import { Edit2, Save, X, User, Mail, MapPin, Globe, Calendar, MessageSquare, TrendingUp, Activity, Award, Menu, LogOut } from 'lucide-react'
 import axios from 'axios'
+import { getTranslation } from './translations'
 
 function Profile({ user, onBack, onUserUpdate, onLogout, onNavigate }) {
+  const t = (key) => getTranslation(user?.language || 'en', key)
   const [isEditing, setIsEditing] = useState(false)
   const [editData, setEditData] = useState({
     phone_number: user?.phone_number || '',
@@ -104,15 +106,15 @@ function Profile({ user, onBack, onUserUpdate, onLogout, onNavigate }) {
           </div>
           <div className="navbar-menu">
             <button className="nav-item" onClick={() => onNavigate('home')}>
-              <span>Home</span>
+              <span>{t('home')}</span>
             </button>
             <button className="nav-item" onClick={() => onNavigate('features')}>
               <Award size={18} />
-              <span>Features</span>
+              <span>{t('features')}</span>
             </button>
             <button className="nav-item active">
               <User size={18} />
-              <span>Profile</span>
+              <span>{t('profile')}</span>
             </button>
             <div className="nav-divider"></div>
             <div className="nav-user-info">
@@ -172,7 +174,7 @@ function Profile({ user, onBack, onUserUpdate, onLogout, onNavigate }) {
                   <User size={24} />
                 </div>
                 <div className="header-content">
-                  <h3>Profile Information</h3>
+                  <h3>{t('myProfile')}</h3>
                   <p>Manage your personal details</p>
                 </div>
                 {!isEditing ? (
@@ -201,7 +203,7 @@ function Profile({ user, onBack, onUserUpdate, onLogout, onNavigate }) {
                     <User size={20} />
                   </div>
                   <div className="field-content">
-                    <label>Phone Number</label>
+                    <label>{t('phoneNumber')}</label>
                     <div className="field-value">{user?.phone_number}</div>
                   </div>
                 </div>
@@ -211,7 +213,7 @@ function Profile({ user, onBack, onUserUpdate, onLogout, onNavigate }) {
                     <Globe size={20} />
                   </div>
                   <div className="field-content">
-                    <label>Preferred Language</label>
+                    <label>{t('language')}</label>
                     {isEditing ? (
                       <select
                         value={editData.language}
@@ -243,7 +245,7 @@ function Profile({ user, onBack, onUserUpdate, onLogout, onNavigate }) {
                     <MapPin size={20} />
                   </div>
                   <div className="field-content">
-                    <label>Location</label>
+                    <label>{t('location')}</label>
                     {isEditing ? (
                       <input
                         type="text"
@@ -269,7 +271,7 @@ function Profile({ user, onBack, onUserUpdate, onLogout, onNavigate }) {
                   <MessageSquare size={24} />
                 </div>
                 <div className="header-content">
-                  <h3>Query History</h3>
+                  <h3>{t('queryHistory')}</h3>
                   <p>Your recent interactions with Gram Vaani</p>
                 </div>
               </div>
@@ -277,7 +279,7 @@ function Profile({ user, onBack, onUserUpdate, onLogout, onNavigate }) {
               {queries.length === 0 ? (
                 <div className="empty-state">
                   <div className="empty-icon">💬</div>
-                  <h4>No queries yet</h4>
+                  <h4>{t('noQueries')}</h4>
                   <p>Start asking questions to see your history here!</p>
                 </div>
               ) : (
