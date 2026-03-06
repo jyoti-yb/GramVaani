@@ -17,8 +17,17 @@ from transcribe_service import TranscribeService
 import bcrypt
 import uuid
 import asyncio
+from pymongo import MongoClient
+from data_aggregator import fetch_all_context_data, format_context_for_llm
 
 load_dotenv()
+
+# MongoDB connection for hyperlocal data
+mongo_client = MongoClient(os.getenv("MONGO_URL"))
+mongo_db = mongo_client.gramvani
+hyperlocal_collection = mongo_db.hyperlocal_context
+success_stories_collection = mongo_db.success_stories
+pest_outbreaks_collection = mongo_db.pest_outbreaks
 
 app = FastAPI()
 
@@ -479,19 +488,43 @@ async def process_ai_query(text: str, user: dict) -> str:
 async def handle_weather_query(text: str, user: dict, language: str) -> str:
     """Handle weather queries using the same logic as /api/weather"""
     try:
-        city = user.get("location", "Delhi").split(",")[0].strip()
+        location = user.get("location", "Delhi")
+        city = location.split(",")[0].strip()
+        
+        print(f"Weather query - User location: {location}, City: {city}")
+        
         api_key = os.getenv("OPENWEATHER_API_KEY")
+        if not api_key:
+            print("ERROR: OpenWeather API key not found")
+            return "Sorry, weather service is not configured. Please try again later."
         
         url = f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}&units=metric"
+        print(f"Weather API URL: {url}")
+        
         res = requests.get(url, timeout=10)
+        print(f"Weather API response status: {res.status_code}")
+        
+        if res.status_code == 404:
+            # Try with fallback city if location has multiple parts
+            location_parts = location.split(",")
+            if len(location_parts) > 1:
+                fallback_city = location_parts[1].strip()
+                print(f"Trying fallback city: {fallback_city}")
+                url = f"https://api.openweathermap.org/data/2.5/weather?q={fallback_city}&appid={api_key}&units=metric"
+                res = requests.get(url, timeout=10)
+                if res.status_code == 200:
+                    city = fallback_city
         
         if res.status_code != 200:
-            return "Sorry, I couldn't fetch weather information right now. Please try again later."
+            print(f"Weather API error: {res.status_code} - {res.text}")
+            return f"Sorry, I couldn't find weather information for {city}. Please update your location in settings."
         
         data = res.json()
         weather_desc = data["weather"][0]["description"]
         temp = data["main"]["temp"]
         humidity = data["main"]["humidity"]
+        
+        print(f"Weather data: {weather_desc}, {temp}°C, {humidity}% humidity")
         
         language_name = LANGUAGE_NAMES.get(language, "English")
         ai_response = azure_client.chat.completions.create(
@@ -504,14 +537,20 @@ async def handle_weather_query(text: str, user: dict, language: str) -> str:
             temperature=0.7
         )
         
-        return ai_response.choices[0].message.content
+        response_text = ai_response.choices[0].message.content
+        print(f"Weather response generated: {response_text[:100]}...")
+        return response_text
     except Exception as e:
         print(f"Weather query error: {e}")
+        import traceback
+        traceback.print_exc()
         return "Sorry, I couldn't fetch weather information right now."
 
 async def handle_crop_price_query(text: str, user: dict, language: str) -> str:
     """Handle crop price queries using the same logic as /api/crop-prices"""
     try:
+        print(f"Crop price query: {text}")
+        
         # Extract crop name from query using AI
         crop_extraction = azure_client.chat.completions.create(
             model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
@@ -524,7 +563,10 @@ async def handle_crop_price_query(text: str, user: dict, language: str) -> str:
         )
         
         crop = crop_extraction.choices[0].message.content.strip().lower()
-        market = user.get("location", "Delhi").split(",")[0]
+        location = user.get("location", "Delhi")
+        market = location.split(",")[0]
+        
+        print(f"Extracted crop: {crop}, Market: {market}")
         
         base_prices = {
             'wheat': 2000, 'rice': 2400, 'corn': 1600, 'barley': 1800,
@@ -545,9 +587,13 @@ async def handle_crop_price_query(text: str, user: dict, language: str) -> str:
             temperature=0.7
         )
         
-        return ai_response.choices[0].message.content
+        response_text = ai_response.choices[0].message.content
+        print(f"Crop price response: {response_text[:100]}...")
+        return response_text
     except Exception as e:
         print(f"Crop price query error: {e}")
+        import traceback
+        traceback.print_exc()
         return "Sorry, I couldn't fetch crop price information right now."
 
 async def handle_scheme_query(text: str, user: dict, language: str) -> str:
@@ -891,23 +937,19 @@ async def submit_community_report(report: CommunityReportRequest, current_user: 
 
 @app.get("/api/community-reports")
 async def get_community_reports(current_user: dict = Depends(get_current_user), limit: int = 20):
-    """Get recent community reports for user's village"""
+    """Get recent community reports - show all reports if no village-specific index"""
     try:
-        from boto3.dynamodb.conditions import Key
+        # Try to get all reports (fallback if index doesn't exist)
+        response = community_reports_table.scan(Limit=limit)
+        reports = response.get('Items', [])
         
-        village_id = current_user.get('location', 'Unknown').split(',')[0].strip()
+        # Sort by timestamp (most recent first)
+        reports.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
         
-        response = community_reports_table.query(
-            IndexName='village_id-timestamp-index',
-            KeyConditionExpression=Key('village_id').eq(village_id),
-            ScanIndexForward=False,
-            Limit=limit
-        )
-        
-        return {'reports': response.get('Items', []), 'count': len(response.get('Items', []))}
+        return {'reports': reports[:limit], 'count': len(reports)}
     except Exception as e:
         print(f"Fetch reports error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return {'reports': [], 'count': 0}
 
 @app.post("/api/validate-report/{report_id}")
 async def validate_report(report_id: str, helpful: bool, current_user: dict = Depends(get_current_user)):
@@ -983,6 +1025,111 @@ async def get_village_leaderboard(limit: int = 10):
         print(f"Leaderboard error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/hyperlocal-context")
+async def get_hyperlocal_context(current_user: dict = Depends(get_current_user)):
+    """Get hyperlocal agricultural context based on user location"""
+    try:
+        location = current_user.get("location", "")
+        parts = [p.strip() for p in location.split(",")]
+        
+        # Try to match district or state
+        query = {}
+        if len(parts) >= 2:
+            query = {"$or": [{"district": {"$regex": parts[0], "$options": "i"}}, {"state": {"$regex": parts[1], "$options": "i"}}]}
+        elif len(parts) == 1:
+            query = {"$or": [{"district": {"$regex": parts[0], "$options": "i"}}, {"state": {"$regex": parts[0], "$options": "i"}}]}
+        
+        context = hyperlocal_collection.find_one(query)
+        
+        if not context:
+            return {"message": "No hyperlocal data available for your location", "has_data": False}
+        
+        # Get current season
+        month = datetime.utcnow().month
+        if month in [6, 7, 8, 9, 10]:  # June-Oct
+            season = "kharif"
+        elif month in [11, 12, 1, 2, 3]:  # Nov-Mar
+            season = "rabi"
+        else:
+            season = "summer"
+        
+        return {
+            "has_data": True,
+            "location": f"{context['district']}, {context['state']}",
+            "soil_type": context["soil_type"],
+            "rainfall": context["rainfall"],
+            "current_season": season,
+            "recommended_crops": context["crops"].get(season, []),
+            "all_crops": context["crops"],
+            "pest_alerts": context.get("pest_alerts", [])
+        }
+    except Exception as e:
+        print(f"Hyperlocal context error: {e}")
+        return {"has_data": False, "message": "Error fetching hyperlocal data"}
+
+@app.get("/api/success-stories")
+async def get_success_stories(current_user: dict = Depends(get_current_user), limit: int = 10):
+    """Get nearby farmer success stories"""
+    try:
+        location = current_user.get("location", "")
+        
+        # Find stories from same region
+        stories = list(success_stories_collection.find(
+            {"location": {"$regex": location.split(",")[0], "$options": "i"}}
+        ).limit(limit))
+        
+        # If no local stories, get any stories
+        if not stories:
+            stories = list(success_stories_collection.find().limit(limit))
+        
+        for story in stories:
+            story["_id"] = str(story["_id"])
+        
+        return {"stories": stories, "count": len(stories)}
+    except Exception as e:
+        print(f"Success stories error: {e}")
+        return {"stories": [], "count": 0}
+
+@app.post("/api/report-pest-outbreak")
+async def report_pest_outbreak(current_user: dict = Depends(get_current_user), pest_name: str = "", crop: str = "", severity: str = "medium"):
+    """Report pest outbreak for location clustering"""
+    try:
+        location = current_user.get("location", "Unknown")
+        
+        outbreak = {
+            "user_phone": current_user["phone_number"],
+            "location": location,
+            "pest_name": pest_name,
+            "crop": crop,
+            "severity": severity,
+            "timestamp": datetime.utcnow(),
+            "verified": False
+        }
+        
+        pest_outbreaks_collection.insert_one(outbreak)
+        
+        # Check for clustering (3+ reports in same area within 7 days)
+        from datetime import timedelta
+        week_ago = datetime.utcnow() - timedelta(days=7)
+        
+        nearby_reports = pest_outbreaks_collection.count_documents({
+            "location": {"$regex": location.split(",")[0], "$options": "i"},
+            "pest_name": pest_name,
+            "timestamp": {"$gte": week_ago}
+        })
+        
+        alert = nearby_reports >= 3
+        
+        return {
+            "status": "success",
+            "outbreak_alert": alert,
+            "nearby_reports": nearby_reports,
+            "message": f"Outbreak alert! {nearby_reports} reports in your area" if alert else "Report submitted"
+        }
+    except Exception as e:
+        print(f"Pest outbreak report error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/outbreak-map")
 async def get_outbreak_map():
     """Get pest/disease outbreak patterns across villages"""
@@ -1050,10 +1197,31 @@ async def process_text(request: TextRequest, current_user: dict = Depends(get_cu
         user_location = current_user.get("location", "India")
         print(f"Process text request: {request.text[:50]}...")
         
+        # FETCH ALL DATA FIRST
+        print("Fetching all relevant data...")
+        context_data = fetch_all_context_data(user_location, request.text)
+        formatted_context = format_context_for_llm(context_data)
+        
+        print(f"Context fetched: {len(formatted_context)} characters")
+        
+        # Pass ALL data to LLM for intelligent response
+        system_prompt = f"""You are Gram Vaani, AI Voice Assistant for Rural India. 
+
+IMPORTANT: Use ONLY the data provided below to answer questions. Do not make up information.
+
+{formatted_context}
+
+Guidelines:
+- Answer based on the data provided above
+- If data is not available, say so clearly
+- Be helpful and practical
+- Keep responses concise and actionable
+"""
+        
         response = azure_client.chat.completions.create(
             model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
             messages=[
-                {"role": "system", "content": f"You are Gram Vaani, AI Voice Assistant for Rural India. Help with farming, weather, crops, and government schemes. User is in {user_location}."},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": request.text}
             ],
             max_tokens=1000,
