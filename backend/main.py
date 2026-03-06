@@ -1,6 +1,6 @@
-from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from openai import AzureOpenAI
@@ -16,6 +16,7 @@ from typing import Optional
 from transcribe_service import TranscribeService
 import bcrypt
 import uuid
+import asyncio
 
 load_dotenv()
 
@@ -65,6 +66,11 @@ polly_client = boto3.client("polly", region_name="ap-south-1")
 
 # Amazon Transcribe
 transcribe_service = TranscribeService()
+
+# WhatsApp credentials
+WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
+WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
+WHATSAPP_VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN")
 
 LANGUAGE_TO_LOCALE = {
     "en": "en-IN",
@@ -266,6 +272,329 @@ async def health():
         return {"status": "healthy", "database": "connected"}
     except Exception as e:
         return {"status": "unhealthy", "database": "disconnected", "error": str(e)}
+
+# WhatsApp Webhook Verification
+@app.get("/webhook")
+async def verify_webhook(
+    hub_mode: str = Query(None, alias="hub.mode"),
+    hub_challenge: str = Query(None, alias="hub.challenge"),
+    hub_verify_token: str = Query(None, alias="hub.verify_token")
+):
+    """Verify WhatsApp webhook subscription"""
+    if hub_mode == "subscribe" and hub_verify_token == WHATSAPP_VERIFY_TOKEN:
+        print("Webhook verified successfully")
+        return PlainTextResponse(content=hub_challenge, status_code=200)
+    else:
+        print("Webhook verification failed")
+        raise HTTPException(status_code=403, detail="Verification failed")
+
+# WhatsApp Webhook Handler
+@app.post("/webhook")
+async def whatsapp_webhook(request: Request):
+    """Handle incoming WhatsApp messages"""
+    try:
+        body = await request.json()
+        print(f"WhatsApp webhook received: {body}")
+        
+        # Quick response to avoid Meta retries
+        asyncio.create_task(process_whatsapp_message(body))
+        
+        return JSONResponse({"status": "received"}, status_code=200)
+    except Exception as e:
+        print(f"Webhook error: {e}")
+        return JSONResponse({"status": "error"}, status_code=200)
+
+async def process_whatsapp_message(body: dict):
+    """Process WhatsApp message asynchronously"""
+    try:
+        entry = body.get("entry", [])
+        if not entry:
+            return
+        
+        changes = entry[0].get("changes", [])
+        if not changes:
+            return
+        
+        value = changes[0].get("value", {})
+        messages = value.get("messages", [])
+        
+        if not messages:
+            return
+        
+        message = messages[0]
+        sender = message.get("from")
+        message_type = message.get("type")
+        
+        # Only process text messages
+        if message_type != "text":
+            await send_whatsapp_message(sender, "Sorry, I can only process text messages at the moment.")
+            return
+        
+        message_text = message.get("text", {}).get("body", "")
+        
+        if not message_text:
+            return
+        
+        print(f"Processing message from {sender}: {message_text}")
+        
+        # Get or create user (use phone number as identifier)
+        user = await get_or_create_whatsapp_user(sender)
+        
+        # Process with AI
+        ai_response = await process_ai_query(message_text, user)
+        
+        # Send response back to WhatsApp
+        await send_whatsapp_message(sender, ai_response)
+        
+    except Exception as e:
+        print(f"Process WhatsApp message error: {e}")
+        import traceback
+        traceback.print_exc()
+
+def normalize_phone_number(phone: str) -> str:
+    """Remove country code from WhatsApp phone number"""
+    # WhatsApp sends: 919032611376, DB has: 9032611376
+    if phone.startswith('91') and len(phone) > 10:
+        return phone[2:]  # Remove '91' country code
+    return phone
+
+async def get_or_create_whatsapp_user(phone_number: str) -> dict:
+    """Get existing user or create new one for WhatsApp"""
+    try:
+        # Try with normalized phone (without country code)
+        normalized_phone = normalize_phone_number(phone_number)
+        
+        response = users_table.get_item(Key={'phone_number': normalized_phone})
+        user = response.get('Item')
+        
+        if user:
+            print(f"Found existing user: {normalized_phone}")
+            return user
+        
+        # Try with original phone number
+        response = users_table.get_item(Key={'phone_number': phone_number})
+        user = response.get('Item')
+        
+        if user:
+            print(f"Found existing user: {phone_number}")
+            return user
+        
+        # Create new user with default settings
+        new_user = {
+            "phone_number": normalized_phone,
+            "password": "",
+            "language": "en",
+            "location": "India",
+            "created_at": datetime.utcnow().isoformat(),
+            "source": "whatsapp"
+        }
+        
+        users_table.put_item(Item=new_user)
+        print(f"Created new WhatsApp user: {normalized_phone}")
+        
+        return new_user
+    except Exception as e:
+        print(f"Get/create user error: {e}")
+        return {
+            "phone_number": normalize_phone_number(phone_number),
+            "language": "en",
+            "location": "India"
+        }
+
+async def process_ai_query(text: str, user: dict) -> str:
+    """Process user query with AI - routes to specialized endpoints like GUI"""
+    try:
+        user_location = user.get("location", "India")
+        language = user.get("language", "en")
+        user_phone = user.get("phone_number", "Unknown")
+        text_lower = text.lower()
+        
+        # Build user context for AI
+        user_context = f"User phone: {user_phone}, Location: {user_location}, Language: {language}"
+        
+        # Detect intent and route to specialized endpoints
+        # Weather queries
+        if any(word in text_lower for word in ['weather', 'temperature', 'rain', 'climate', 'मौसम', 'बारिश', 'तापमान']):
+            return await handle_weather_query(text, user, language)
+        
+        # Crop price queries
+        elif any(word in text_lower for word in ['price', 'cost', 'rate', 'market', 'mandi', 'कीमत', 'दाम', 'भाव', 'मंडी']):
+            return await handle_crop_price_query(text, user, language)
+        
+        # Government scheme queries
+        elif any(word in text_lower for word in ['scheme', 'subsidy', 'loan', 'government', 'योजना', 'सब्सिडी', 'ऋण', 'सरकार']):
+            return await handle_scheme_query(text, user, language)
+        
+        # Personal info queries (who am i, my profile, etc.)
+        elif any(word in text_lower for word in ['who am i', 'my profile', 'my details', 'my info', 'about me', 'मैं कौन', 'मेरी जानकारी']):
+            language_name = LANGUAGE_NAMES.get(language, "English")
+            response = azure_client.chat.completions.create(
+                model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
+                messages=[
+                    {"role": "system", "content": f"You are Gram Vaani assistant. Tell the user about their profile in {language_name} language. Be friendly and concise."},
+                    {"role": "user", "content": f"Tell me about my profile. My details: Phone: {user_phone}, Location: {user_location}, Preferred Language: {language_name}"}
+                ],
+                max_tokens=200,
+                temperature=0.7
+            )
+            return response.choices[0].message.content
+        
+        # General farming query
+        else:
+            response = azure_client.chat.completions.create(
+                model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
+                messages=[
+                    {"role": "system", "content": f"You are Gram Vaani, AI Voice Assistant for Rural India. Help with farming, weather, crops, and government schemes. {user_context}. Keep responses concise for WhatsApp (under 300 words)."},
+                    {"role": "user", "content": text}
+                ],
+                max_tokens=500,
+                temperature=0.7
+            )
+            
+            response_text = response.choices[0].message.content
+            
+            # Log query to DynamoDB
+            query_id = str(uuid.uuid4())
+            query_english = translate_to_english(text, language)
+            
+            query_item = {
+                "query_id": query_id,
+                "user_phone": user["phone_number"],
+                "query": text,
+                "query_english": query_english,
+                "response": response_text,
+                "query_type": "whatsapp",
+                "language": language,
+                "timestamp": datetime.utcnow().isoformat(),
+                "helpful": None,
+                "feedback_text": None
+            }
+            queries_table.put_item(Item=query_item)
+            
+            return response_text
+    except Exception as e:
+        print(f"AI query error: {e}")
+        return "Sorry, I'm having trouble processing your request. Please try again."
+
+async def handle_weather_query(text: str, user: dict, language: str) -> str:
+    """Handle weather queries using the same logic as /api/weather"""
+    try:
+        city = user.get("location", "Delhi").split(",")[0].strip()
+        api_key = os.getenv("OPENWEATHER_API_KEY")
+        
+        url = f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}&units=metric"
+        res = requests.get(url, timeout=10)
+        
+        if res.status_code != 200:
+            return "Sorry, I couldn't fetch weather information right now. Please try again later."
+        
+        data = res.json()
+        weather_desc = data["weather"][0]["description"]
+        temp = data["main"]["temp"]
+        humidity = data["main"]["humidity"]
+        
+        language_name = LANGUAGE_NAMES.get(language, "English")
+        ai_response = azure_client.chat.completions.create(
+            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
+            messages=[
+                {"role": "system", "content": f"You are a weather assistant. Provide weather information in {language_name} language ONLY. Be concise and natural for WhatsApp."},
+                {"role": "user", "content": f"Tell me the weather in {city}: {weather_desc}, temperature {temp}°C, humidity {humidity}%"}
+            ],
+            max_tokens=200,
+            temperature=0.7
+        )
+        
+        return ai_response.choices[0].message.content
+    except Exception as e:
+        print(f"Weather query error: {e}")
+        return "Sorry, I couldn't fetch weather information right now."
+
+async def handle_crop_price_query(text: str, user: dict, language: str) -> str:
+    """Handle crop price queries using the same logic as /api/crop-prices"""
+    try:
+        # Extract crop name from query using AI
+        crop_extraction = azure_client.chat.completions.create(
+            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
+            messages=[
+                {"role": "system", "content": "Extract the crop name from the user's query. Return only the crop name in English (e.g., wheat, rice, tomato, onion). If no crop is mentioned, return 'wheat'."},
+                {"role": "user", "content": text}
+            ],
+            max_tokens=20,
+            temperature=0.3
+        )
+        
+        crop = crop_extraction.choices[0].message.content.strip().lower()
+        market = user.get("location", "Delhi").split(",")[0]
+        
+        base_prices = {
+            'wheat': 2000, 'rice': 2400, 'corn': 1600, 'barley': 1800,
+            'sugarcane': 5000, 'cotton': 6000, 'soybean': 4400, 'mustard': 5600,
+            'onion': 3000, 'potato': 1400, 'tomato': 3600, 'chili': 8000
+        }
+        
+        price = base_prices.get(crop, 2500)
+        
+        language_name = LANGUAGE_NAMES.get(language, "English")
+        ai_response = azure_client.chat.completions.create(
+            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
+            messages=[
+                {"role": "system", "content": f"You are a crop price assistant. Provide crop price information in {language_name} language ONLY. Be concise for WhatsApp."},
+                {"role": "user", "content": f"Tell me the current price of {crop} in {market} market is ₹{price} per quintal"}
+            ],
+            max_tokens=200,
+            temperature=0.7
+        )
+        
+        return ai_response.choices[0].message.content
+    except Exception as e:
+        print(f"Crop price query error: {e}")
+        return "Sorry, I couldn't fetch crop price information right now."
+
+async def handle_scheme_query(text: str, user: dict, language: str) -> str:
+    """Handle government scheme queries using the same logic as /api/gov-schemes"""
+    try:
+        language_name = LANGUAGE_NAMES.get(language, "English")
+        
+        response = azure_client.chat.completions.create(
+            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
+            messages=[
+                {"role": "system", "content": f"You are Gram Vaani, AI assistant for rural India. Provide information about government schemes for farmers in {language_name} language ONLY. Be concise and helpful for WhatsApp (under 300 words)."},
+                {"role": "user", "content": text}
+            ],
+            max_tokens=500,
+            temperature=0.7
+        )
+        
+        return response.choices[0].message.content
+    except Exception as e:
+        print(f"Scheme query error: {e}")
+        return "Sorry, I couldn't fetch scheme information right now."
+
+async def send_whatsapp_message(to: str, message: str):
+    """Send message to WhatsApp user via Graph API"""
+    try:
+        url = f"https://graph.facebook.com/v22.0/{WHATSAPP_PHONE_NUMBER_ID}/messages"
+        
+        headers = {
+            "Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": to,
+            "type": "text",
+            "text": {"body": message}
+        }
+        
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            print(f"Message sent successfully to {to}")
+        else:
+            print(f"Failed to send message: {response.status_code} - {response.text}")
+    except Exception as e:
+        print(f"Send WhatsApp message error: {e}")
 
 @app.get("/api/location")
 async def get_location():
