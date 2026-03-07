@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { Mic, MicOff, Play, Pause, Loader, LogOut, User, Award, Users } from 'lucide-react'
+import { Mic, MicOff, Play, Pause, Loader, LogOut, User, Award, Users, Calendar } from 'lucide-react'
 import axios from 'axios'
 import Auth from './Auth'
 import Profile from './Profile'
 import Landing from './Landing'
 import Features from './Features'
 import Community from './Community'
+import CropCalendar from './CropCalendar'
 import { API_URL } from './config'
 import { getTranslation } from './translations'
 
@@ -30,6 +31,7 @@ function App() {
   const [showProfile, setShowProfile] = useState(false)
   const [showFeatures, setShowFeatures] = useState(false)
   const [showCommunity, setShowCommunity] = useState(false)
+  const [showCalendar, setShowCalendar] = useState(false)
   const [showFeedbackModal, setShowFeedbackModal] = useState(false)
   const [currentQueryId, setCurrentQueryId] = useState(null)
   const [feedbackText, setFeedbackText] = useState('')
@@ -530,6 +532,50 @@ function App() {
     )
   }
 
+  if (showCalendar) {
+    return (
+      <div className="container">
+        <nav className="app-navbar">
+          <div className="navbar-content">
+            <div className="navbar-brand" onClick={() => { setShowProfile(false); setShowFeatures(false); setShowCommunity(false); setShowCalendar(false); }}>
+              <span className="navbar-icon">🌾</span>
+              <span className="navbar-title">Gram Vaani</span>
+            </div>
+            <div className="navbar-menu">
+              <button className="nav-item" onClick={() => { setShowProfile(false); setShowFeatures(false); setShowCommunity(false); setShowCalendar(false); }}>
+                <span>{t('home')}</span>
+              </button>
+              <button className="nav-item" onClick={() => setShowCommunity(true)}>
+                <Users size={18} />
+                <span>{t('community')}</span>
+              </button>
+              <button className="nav-item active">
+                <Calendar size={18} />
+                <span>{uiLanguage === 'hi' ? 'कैलेंडर' : uiLanguage === 'te' ? 'క్యాలెండర్' : uiLanguage === 'ta' ? 'நாட்காட்டி' : uiLanguage === 'kn' ? 'ಕ್ಯಾಲೆಂಡರ್' : uiLanguage === 'ml' ? 'കലണ്ടർ' : uiLanguage === 'bn' ? 'ক্যালেন্ডার' : uiLanguage === 'gu' ? 'કેલેન્ડર' : uiLanguage === 'mr' ? 'कॅलेंडर' : 'Calendar'}</span>
+              </button>
+              <button className="nav-item" onClick={() => setShowFeatures(true)}>
+                <Award size={18} />
+                <span>{t('features')}</span>
+              </button>
+              <button className="nav-item" onClick={() => setShowProfile(true)}>
+                <User size={18} />
+                <span>{t('profile')}</span>
+              </button>
+              <div className="nav-divider"></div>
+              <div className="nav-user-info">
+                <span className="nav-location">📍 {user?.location?.split(',')[0]}</span>
+              </div>
+              <button className="nav-logout" onClick={handleLogout}>
+                <LogOut size={18} />
+              </button>
+            </div>
+          </div>
+        </nav>
+        <CropCalendar language={uiLanguage} key={uiLanguage} />
+      </div>
+    )
+  }
+
   return (
     <div className="container" key={user?.language}>
       <nav className="app-navbar">
@@ -545,6 +591,10 @@ function App() {
             <button className="nav-item" onClick={() => setShowCommunity(true)}>
               <Users size={18} />
               <span>{t('community')}</span>
+            </button>
+            <button className="nav-item" onClick={() => setShowCalendar(true)}>
+              <Calendar size={18} />
+              <span>{uiLanguage === 'hi' ? 'कैलेंडर' : uiLanguage === 'te' ? 'క్యాలెండర్' : uiLanguage === 'ta' ? 'நாட்காட்டி' : uiLanguage === 'kn' ? 'ಕ್ಯಾಲೆಂಡರ್' : uiLanguage === 'ml' ? 'കലണ്ടർ' : uiLanguage === 'bn' ? 'ক্যালেন্ডার' : uiLanguage === 'gu' ? 'કેલેન્ડર' : uiLanguage === 'mr' ? 'कॅलेंडर' : 'Calendar'}</span>
             </button>
             <button className="nav-item" onClick={() => setShowFeatures(true)}>
               <Award size={18} />
