@@ -1,0 +1,91 @@
+╔══════════════════════════════════════════════════════════════════════╗
+║                    🌾 GRAM VAANI - QUICK REFERENCE                   ║
+╚══════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ 🔐 LOGIN CREDENTIALS                                                 │
+├─────────────────────────────────────────────────────────────────────┤
+│ Email:    test@example.com                                          │
+│ Password: password123                                               │
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ 🚀 START APPLICATION                                                 │
+├─────────────────────────────────────────────────────────────────────┤
+│ Backend:  cd backend && uvicorn main:app --reload --port 8000      │
+│ Frontend: cd frontend && npm run dev                                │
+│                                                                      │
+│ URLs:                                                                │
+│   • Frontend: http://localhost:5173                                 │
+│   • Backend:  http://localhost:8000                                 │
+│   • API Docs: http://localhost:8000/docs                            │
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ 🧪 RUN TESTS                                                         │
+├─────────────────────────────────────────────────────────────────────┤
+│ cd backend                                                           │
+│ python3 test_complete.py      # Full API test                       │
+│ python3 demo_polly_tts.py     # Multi-language TTS demo             │
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ 🎤 SUPPORTED LANGUAGES (Polly TTS)                                   │
+├─────────────────────────────────────────────────────────────────────┤
+│ • 🇮🇳 Hindi (hi)      • 🇮🇳 Tamil (ta)      • 🇮🇳 Telugu (te)       │
+│ • 🇮🇳 Kannada (kn)    • 🇮🇳 Malayalam (ml)  • 🇮🇳 Bengali (bn)      │
+│ • 🇮🇳 Gujarati (gu)   • 🇮🇳 Marathi (mr)    • 🇺🇸 English (en)      │
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ ✅ WHAT'S FIXED                                                      │
+├─────────────────────────────────────────────────────────────────────┤
+│ ✓ Login authentication (bcrypt password hashing)                    │
+│ ✓ Amazon Polly TTS for 9 Indian languages                           │
+│ ✓ MongoDB index conflicts resolved                                  │
+│ ✓ Password migration (plain text → hashed)                          │
+│ ✓ Security improvements (JWT, CORS, bcrypt)                         │
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ 📚 DOCUMENTATION                                                     │
+├─────────────────────────────────────────────────────────────────────┤
+│ • COMPLETE_SUMMARY.md         - Full summary of all changes         │
+│ • FIXES_AND_ENHANCEMENTS.md   - Detailed documentation              │
+│ • README.md                   - Quick setup guide                   │
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ 🛠️ UTILITY SCRIPTS                                                   │
+├─────────────────────────────────────────────────────────────────────┤
+│ • migrate_passwords.py  - Hash existing passwords                   │
+│ • fix_indexes.py        - Fix MongoDB indexes                       │
+│ • test_complete.py      - Comprehensive API tests                   │
+│ • demo_polly_tts.py     - Multi-language TTS demo                   │
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ 🔧 CONFIGURATION (.env)                                              │
+├─────────────────────────────────────────────────────────────────────┤
+│ AWS_REGION=ap-south-1                                               │
+│ AWS_ACCESS_KEY_ID=AKIAZ24ITESAFAVZQXDR                              │
+│ MONGO_URL=mongodb+srv://gramvani_user:...                           │
+│ AZURE_OPENAI_ENDPOINT=https://panda-openai-api...                   │
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ 🎯 API ENDPOINTS                                                     │
+├─────────────────────────────────────────────────────────────────────┤
+│ POST /api/login          - Login with email/password               │
+│ POST /api/signup         - Create new account                       │
+│ GET  /api/me             - Get user profile                         │
+│ POST /process-text       - Text → AI response + TTS                 │
+│ POST /process-audio      - Audio → Transcribe + AI + TTS            │
+│ POST /api/weather        - Get weather information                  │
+│ POST /api/crop-prices    - Get crop prices                          │
+│ POST /api/gov-schemes    - Get government schemes                   │
+└─────────────────────────────────────────────────────────────────────┘
+
+╔══════════════════════════════════════════════════════════════════════╗
+║                    ✅ ALL SYSTEMS OPERATIONAL                        ║
+╚══════════════════════════════════════════════════════════════════════╝
