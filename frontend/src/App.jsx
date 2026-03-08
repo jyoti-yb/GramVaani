@@ -1,13 +1,25 @@
 import React, { useState, useRef, useEffect } from 'react'
+<<<<<<< Updated upstream
 import { Mic, MicOff, Play, Pause, Loader, LogOut, User } from 'lucide-react'
 import axios from 'axios'
 import Auth from './Auth'
 import Profile from './Profile'
+=======
+import { Mic, MicOff, Play, Pause, Loader } from 'lucide-react'
+import axios from 'axios'
+import Auth from './Auth'
+import Profile from './Profile'
+import Landing from './Landing'
+import Community from './Community'
+import Advisor from './Advisor'
+import Navbar from './Navbar'
+>>>>>>> Stashed changes
 import { API_URL } from './config'
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [user, setUser] = useState(null)
+  const [currentPage, setCurrentPage] = useState('home')
   const [isRecording, setIsRecording] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [response, setResponse] = useState('')
@@ -21,7 +33,13 @@ function App() {
   const [modalType, setModalType] = useState('')
   const [modalInput, setModalInput] = useState('')
   const [modalLocation, setModalLocation] = useState('')
+<<<<<<< Updated upstream
   const [showProfile, setShowProfile] = useState(false)
+=======
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false)
+  const [currentQueryId, setCurrentQueryId] = useState(null)
+  const [feedbackText, setFeedbackText] = useState('')
+>>>>>>> Stashed changes
 
   const mediaRecorderRef = useRef(null)
   const audioRef = useRef(null)
@@ -93,6 +111,17 @@ function App() {
     checkAuthStatus()
   }, [])
 
+<<<<<<< Updated upstream
+=======
+  useEffect(() => {
+    if (isAuthenticated) {
+      setShowLanding(false)
+    }
+  }, [isAuthenticated])
+
+  const t = (key) => getTranslation(uiLanguage, key)
+
+>>>>>>> Stashed changes
   const checkAuthStatus = async () => {
     const token = localStorage.getItem('token')
     if (token) {
@@ -130,6 +159,11 @@ function App() {
     setResponse('')
     setError('')
     setAudioUrl(null)
+    setCurrentPage('home')
+  }
+
+  const handleNavigate = (page) => {
+    setCurrentPage(page)
   }
 
   const startRecording = async () => {
@@ -183,8 +217,6 @@ function App() {
       const token = localStorage.getItem('token')
       const formData = new FormData()
       formData.set('file', audioBlob, 'recording.wav')
-
-      console.log('Sending audio with language:', language)
       
       const response = await axios.post(`${API_URL}/process-audio?language=${language}`, formData, {
         headers: { 
@@ -200,7 +232,6 @@ function App() {
         const audioBlob = new Blob([Uint8Array.from(atob(response.data.audio_data), c => c.charCodeAt(0))], { type: 'audio/wav' })
         const audioUrl = URL.createObjectURL(audioBlob)
         setAudioUrl(audioUrl)
-        // Auto-play audio after setting URL
         setTimeout(() => {
           if (audioRef.current) {
             audioRef.current.play()
@@ -211,7 +242,6 @@ function App() {
     } catch (err) {
       const errorMessage = err.response?.data?.detail || 'Failed to process audio'
       setError(errorMessage)
-      console.error('Error processing audio:', err)
     } finally {
       setIsProcessing(false)
     }
@@ -245,7 +275,6 @@ function App() {
         const audioBlob = new Blob([Uint8Array.from(atob(response.data.audio_data), c => c.charCodeAt(0))], { type: 'audio/wav' })
         const audioUrl = URL.createObjectURL(audioBlob)
         setAudioUrl(audioUrl)
-        // Auto-play audio after setting URL
         setTimeout(() => {
           if (audioRef.current) {
             audioRef.current.play()
@@ -256,7 +285,6 @@ function App() {
     } catch (err) {
       const errorMessage = err.response?.data?.detail || 'Failed to process text. Please try again.'
       setError(errorMessage)
-      console.error('Error processing text:', err)
     } finally {
       setIsProcessing(false)
     }
@@ -276,17 +304,35 @@ function App() {
 
   const handleAudioEnded = () => setIsPlaying(false)
 
+<<<<<<< Updated upstream
   // -------------------- Modal Handlers --------------------
+=======
+  const submitFeedback = async (helpful) => {
+    try {
+      const token = localStorage.getItem('token')
+      await axios.post(`${API_URL}/api/feedback`, {
+        query_id: currentQueryId,
+        helpful,
+        feedback_text: feedbackText
+      }, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      setShowFeedbackModal(false)
+      setFeedbackText('')
+    } catch (err) {
+      console.error('Feedback error:', err)
+    }
+  }
+
+>>>>>>> Stashed changes
   const openModal = (type) => {
     setModalType(type)
-    // Pre-fill user's city for weather
     if (type === 'weather' && user?.location) {
       const city = user.location.split(',')[0].trim()
       setModalInput(city)
     } else {
       setModalInput('')
     }
-    // Pre-fill user's location for crop prices
     if (type === 'crop' && user?.location) {
       setModalLocation(user.location)
     } else {
@@ -295,7 +341,6 @@ function App() {
     setShowModal(true)
   }
 
-  // Quick access functions that use user's location automatically
   const getMyWeather = async () => {
     setIsProcessing(true)
     setError('')
@@ -305,7 +350,7 @@ function App() {
     try {
       const token = localStorage.getItem('token')
       const res = await axios.post(`${API_URL}/api/weather`, { 
-        city: 'current', // This will use user's location from profile
+        city: 'current',
         language 
       }, {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -331,47 +376,6 @@ function App() {
       setError('Unable to fetch weather information for your location.')
     } finally {
       setIsProcessing(false)
-    }
-  }
-
-  const getCropPricesForMyArea = (cropName) => {
-    return async () => {
-      setIsProcessing(true)
-      setError('')
-      setResponse('')
-      setAudioUrl(null)
-      
-      try {
-        const token = localStorage.getItem('token')
-        const res = await axios.post(`${API_URL}/api/crop-prices`, { 
-          crop: cropName,
-          language 
-          // market will automatically use user's location from profile
-        }, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        })
-        
-        setResponse({ 
-          transcript: `${cropName} prices in my area (${user?.location})`, 
-          response_text: res.data.text 
-        })
-        
-        if (res.data.audio_data) {
-          const audioBlob = new Blob([Uint8Array.from(atob(res.data.audio_data), c => c.charCodeAt(0))], { type: 'audio/wav' })
-          const audioUrl = URL.createObjectURL(audioBlob)
-          setAudioUrl(audioUrl)
-          setTimeout(() => {
-            if (audioRef.current) {
-              audioRef.current.play()
-              setIsPlaying(true)
-            }
-          }, 100)
-        }
-      } catch (err) {
-        setError(`Unable to fetch ${cropName} prices for your area.`)
-      } finally {
-        setIsProcessing(false)
-      }
     }
   }
 
@@ -411,7 +415,6 @@ function App() {
         const audioBlob = new Blob([Uint8Array.from(atob(res.data.audio_data), c => c.charCodeAt(0))], { type: 'audio/wav' })
         const audioUrl = URL.createObjectURL(audioBlob)
         setAudioUrl(audioUrl)
-        // Auto-play audio after setting URL
         setTimeout(() => {
           if (audioRef.current) {
             audioRef.current.play()
@@ -432,6 +435,7 @@ function App() {
     return <Auth onLogin={handleLogin} />
   }
 
+<<<<<<< Updated upstream
   if (showProfile) {
     return (
       <Profile 
@@ -439,10 +443,62 @@ function App() {
         onBack={() => setShowProfile(false)}
         onUserUpdate={(updatedUser) => setUser({...user, ...updatedUser})}
       />
+=======
+  if (!user) {
+    return <div className="container"><div className="main-card">Loading...</div></div>
+  }
+
+  if (currentPage === 'profile') {
+    return (
+      <>
+        <Navbar 
+          user={user} 
+          currentPage={currentPage} 
+          onNavigate={handleNavigate} 
+          onLogout={handleLogout}
+          language={uiLanguage}
+        />
+        <Profile 
+          user={{...user, language: uiLanguage}} 
+          onUserUpdate={(updatedUser) => setUser({...user, ...updatedUser})}
+        />
+      </>
+    )
+  }
+
+  if (currentPage === 'advisor') {
+    return (
+      <>
+        <Navbar 
+          user={user} 
+          currentPage={currentPage} 
+          onNavigate={handleNavigate} 
+          onLogout={handleLogout}
+          language={uiLanguage}
+        />
+        <Advisor user={{...user, language: uiLanguage}} />
+      </>
+    )
+  }
+
+  if (currentPage === 'community') {
+    return (
+      <>
+        <Navbar 
+          user={user} 
+          currentPage={currentPage} 
+          onNavigate={handleNavigate} 
+          onLogout={handleLogout}
+          language={uiLanguage}
+        />
+        <Community user={{...user, language: uiLanguage}} />
+      </>
+>>>>>>> Stashed changes
     )
   }
 
   return (
+<<<<<<< Updated upstream
     <div className="container">
       <div className="header">
         <div className="logo">
@@ -505,7 +561,33 @@ function App() {
             <div className="text-controls">
               <button className="submit-button" onClick={processText} disabled={isProcessing || !textInput.trim()}>
                 {isProcessing ? <><Loader className="loading" size={16} /> Processing...</> : 'Submit Question'}
+=======
+    <>
+      <Navbar 
+        user={user} 
+        currentPage={currentPage} 
+        onNavigate={handleNavigate} 
+        onLogout={handleLogout}
+        language={uiLanguage}
+      />
+      <div className="container" key={user?.language}>
+        <div className="main-card">
+          <div className="input-mode-selector">
+            <button className={`mode-button ${inputMode === 'voice' ? 'active' : ''}`} onClick={() => setInputMode('voice')}>🎤 {t('voice')}</button>
+            <button className={`mode-button ${inputMode === 'text' ? 'active' : ''}`} onClick={() => setInputMode('text')}>✍ {t('text')}</button>
+          </div>
+
+          {inputMode === 'voice' ? (
+            <div className="voice-section">
+              <button className={`voice-button ${isRecording ? 'recording' : ''}`} onClick={isRecording ? stopRecording : startRecording} disabled={isProcessing}>
+                {isProcessing ? <Loader className="loading" /> : isRecording ? <MicOff size={40} /> : <Mic size={40} />}
+>>>>>>> Stashed changes
               </button>
+              <div className="status-text">
+                {isRecording ? `🎤 ${t('listening')}` :
+                  isProcessing ? `🤖 ${t('processing')}` :
+                    `👆 ${t('askQuestion')}`}
+              </div>
               <div className="language-selector-inline">
                 <div className="language-icon">🌐</div>
                 <select value={language} onChange={(e) => setLanguage(e.target.value)}>
@@ -521,6 +603,7 @@ function App() {
                 </select>
               </div>
             </div>
+<<<<<<< Updated upstream
           </div>
         )}
 
@@ -612,40 +695,172 @@ function App() {
                 }
                 onKeyPress={(e) => e.key === 'Enter' && handleModalSubmit()}
                 autoFocus
-              />
-              {modalType === 'crop' && (
-                <>
-                  <label style={{marginTop: '15px', display: 'block'}}>
-                    Location (market):
-                  </label>
-                  <input
-                    type="text"
-                    value={modalLocation}
-                    onChange={(e) => setModalLocation(e.target.value)}
-                    placeholder="e.g., Delhi, Mumbai (defaults to your location)"
-                    onKeyPress={(e) => e.key === 'Enter' && handleModalSubmit()}
-                  />
-                </>
-              )}
-              {modalType === 'weather' && (
-                <p style={{fontSize: '12px', color: '#666', marginTop: '8px'}}>
-                  💡 Tip: Use "My Weather" button above for your location ({user?.location})
-                </p>
-              )}
-              {modalType === 'crop' && (
-                <p style={{fontSize: '12px', color: '#666', marginTop: '8px'}}>
-                  💡 Location defaults to: {user?.location || 'your profile location'}
-                </p>
+=======
+          ) : (
+            <div className="text-section">
+              <textarea value={textInput} onChange={(e) => setTextInput(e.target.value)} placeholder={t('typeMessage')} className="text-input" rows={3} disabled={isProcessing} />
+              <div className="text-controls">
+                <button className="submit-button" onClick={processText} disabled={isProcessing || !textInput.trim()}>
+                  {isProcessing ? <><Loader className="loading" size={16} /> {t('processing')}</> : t('send')}
+                </button>
+                <div className="language-selector-inline">
+                  <div className="language-icon">🌐</div>
+                  <select value={uiLanguage} onChange={(e) => setUiLanguage(e.target.value)}>
+                    <option value="en">🇺🇸 English</option>
+                    <option value="hi">🇮🇳 Hindi</option>
+                    <option value="ta">🇮🇳 Tamil</option>
+                    <option value="te">🇮🇳 Telugu</option>
+                    <option value="kn">🇮🇳 Kannada</option>
+                    <option value="ml">🇮🇳 Malayalam</option>
+                    <option value="bn">🇮🇳 Bengali</option>
+                    <option value="gu">🇮🇳 Gujarati</option>
+                    <option value="mr">🇮🇳 Marathi</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {error && <div className="error-message">{error}</div>}
+
+          {response && (
+            <div className="response-section">
+              <h3>📝 {response.transcript}</h3>
+              <p className="response-text">{response.response_text}</p>
+              {audioUrl && (
+                <div className="audio-controls">
+                  <button className="play-button" onClick={playAudio}>
+                    {isPlaying ? <Pause size={20} /> : <Play size={20} />}
+                    {isPlaying ? t('pause') : t('playAudio')}
+                  </button>
+                  <audio ref={audioRef} src={audioUrl} onEnded={handleAudioEnded} />
+                </div>
               )}
             </div>
-            <div className="modal-footer">
-              <button className="cancel-button" onClick={closeModal}>Cancel</button>
-              <button className="submit-button" onClick={handleModalSubmit} disabled={!modalInput.trim()}>Get Information</button>
+          )}
+
+          <div className="feature-buttons">
+            <button className="feature-card" onClick={getMyWeather} disabled={isProcessing}>
+              <div className="icon">🌤</div>
+              <div className="title">{t('myWeather')}</div>
+              <div className="description">{t('currentWeather')} {user?.location?.split(',')[0] || t('yourLocation')}</div>
+            </button>
+            <button className="feature-card" onClick={() => openModal('weather')}>
+              <div className="icon">🌍</div>
+              <div className="title">{t('otherCity')}</div>
+              <div className="description">{t('checkWeather')}</div>
+            </button>
+            <button className="feature-card" onClick={() => openModal('crop')}>
+              <div className="icon">💰</div>
+              <div className="title">{t('cropPrices')}</div>
+              <div className="description">{t('checkPrices')}</div>
+            </button>
+            <button className="feature-card" onClick={() => openModal('schemes')}>
+              <div className="icon">🏛</div>
+              <div className="title">{t('govSchemes')}</div>
+              <div className="description">{t('learnSchemes')}</div>
+            </button>
+          </div>
+        </div>
+
+        {showModal && (
+          <div className="modal-overlay" onClick={closeModal}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h3>
+                  {modalType === 'weather' && '🌤 Weather Information'}
+                  {modalType === 'crop' && '💰 Crop Prices'}
+                  {modalType === 'schemes' && '🏛 Government Schemes'}
+                </h3>
+                <button className="close-button" onClick={closeModal}>×</button>
+              </div>
+              <div className="modal-body">
+                <label>
+                  {modalType === 'weather' && 'Enter city name:'}
+                  {modalType === 'crop' && 'Enter crop name:'}
+                  {modalType === 'schemes' && 'Enter topic (e.g., irrigation, fertilizer):'}
+                </label>
+                <input
+                  type="text"
+                  value={modalInput}
+                  onChange={(e) => setModalInput(e.target.value)}
+                  placeholder={
+                    modalType === 'weather' ? 'e.g., Delhi, Mumbai, Bangalore' :
+                    modalType === 'crop' ? 'e.g., Rice, Wheat, Cotton, Sugarcane' :
+                    'e.g., Irrigation, Seeds, Fertilizer, Loan'
+                  }
+                  onKeyPress={(e) => e.key === 'Enter' && handleModalSubmit()}
+                  autoFocus
+                />
+                {modalType === 'crop' && (
+                  <>
+                    <label style={{marginTop: '15px', display: 'block'}}>
+                      Location (market):
+                    </label>
+                    <input
+                      type="text"
+                      value={modalLocation}
+                      onChange={(e) => setModalLocation(e.target.value)}
+                      placeholder="e.g., Delhi, Mumbai (defaults to your location)"
+                      onKeyPress={(e) => e.key === 'Enter' && handleModalSubmit()}
+                    />
+                  </>
+                )}
+                {modalType === 'weather' && (
+                  <p style={{fontSize: '12px', color: '#666', marginTop: '8px'}}>
+                    💡 Tip: Use "My Weather" button above for your location ({user?.location})
+                  </p>
+                )}
+                {modalType === 'crop' && (
+                  <p style={{fontSize: '12px', color: '#666', marginTop: '8px'}}>
+                    💡 Location defaults to: {user?.location || 'your profile location'}
+                  </p>
+                )}
+              </div>
+              <div className="modal-footer">
+                <button className="cancel-button" onClick={closeModal}>Cancel</button>
+                <button className="submit-button" onClick={handleModalSubmit} disabled={!modalInput.trim()}>Get Information</button>
+              </div>
             </div>
           </div>
+        )}
+
+        {showFeedbackModal && (
+          <div className="feedback-notification">
+            <div className="feedback-notification-content">
+              <div className="feedback-notification-header">
+                <span className="feedback-icon">💬</span>
+                <h4>{t('wasThisHelpful')}</h4>
+                <button className="feedback-close" onClick={() => setShowFeedbackModal(false)}>×</button>
+              </div>
+              <p className="feedback-subtitle">Your feedback builds village trust scores</p>
+              <div className="feedback-actions">
+                <button className="feedback-btn-small helpful" onClick={() => submitFeedback(true)}>
+                  👍 {t('validate')}
+                </button>
+                <button className="feedback-btn-small not-helpful" onClick={() => submitFeedback(false)}>
+                  👎
+                </button>
+              </div>
+              <textarea
+                value={feedbackText}
+                onChange={(e) => setFeedbackText(e.target.value)}
+                placeholder={t('additionalFeedback')}
+                className="feedback-textarea-small"
+                rows={2}
+>>>>>>> Stashed changes
+              />
+            </div>
+          </div>
+<<<<<<< Updated upstream
         </div>
       )}
     </div>
+=======
+        )}
+      </div>
+    </>
+>>>>>>> Stashed changes
   )
 }
 

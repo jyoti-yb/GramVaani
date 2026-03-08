@@ -1,8 +1,17 @@
 import React, { useState, useEffect } from 'react'
+<<<<<<< Updated upstream
 import { ArrowLeft, Edit2, Save, X, User, Mail, MapPin, Globe, Calendar, MessageSquare, TrendingUp, Activity, Award, Menu } from 'lucide-react'
+=======
+import { Edit2, Save, X, User, MapPin, Globe, Calendar, MessageSquare, TrendingUp, Activity, Award, Menu } from 'lucide-react'
+>>>>>>> Stashed changes
 import axios from 'axios'
 
+<<<<<<< Updated upstream
 function Profile({ user, onBack, onUserUpdate }) {
+=======
+function Profile({ user, onUserUpdate }) {
+  const t = (key) => getTranslation(user?.language || 'en', key)
+>>>>>>> Stashed changes
   const [isEditing, setIsEditing] = useState(false)
   const [editData, setEditData] = useState({
     email: user?.email || '',
@@ -96,6 +105,7 @@ function Profile({ user, onBack, onUserUpdate }) {
 
   return (
     <div className="profile-container">
+<<<<<<< Updated upstream
       <div className="profile-hero">
         <div className="hero-background"></div>
         <div className="hero-content">
@@ -115,6 +125,9 @@ function Profile({ user, onBack, onUserUpdate }) {
       </div>
 
       <div className="profile-content">
+=======
+      <div className="profile-content-wrapper">
+>>>>>>> Stashed changes
         <div className="mobile-menu-toggle">
           <button onClick={() => setShowMobileMenu(!showMobileMenu)} className="menu-button">
             <Menu size={24} />

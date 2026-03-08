@@ -733,7 +733,313 @@ async def process_audio(file: UploadFile = File(...), language: str = "hi", curr
     except HTTPException:
         raise
     except Exception as e:
+<<<<<<< Updated upstream
         print(f"Process audio error: {str(e)}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error processing audio: {str(e)}")
+=======
+        print(f"Audio error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+
+# Advisor Page Endpoints
+@app.get("/api/advisor/weather")
+async def get_advisor_weather(current_user: dict = Depends(get_current_user)):
+    try:
+        location = current_user.get("location", "Delhi")
+        city = location.split(",")[0].strip()
+        
+        api_key = os.getenv("OPENWEATHER_API_KEY")
+        url = f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}&units=metric"
+        res = requests.get(url, timeout=10)
+        
+        if res.status_code != 200:
+            return {"location": city, "temperature": 25, "humidity": 60, "description": "Clear sky", "alerts": []}
+        
+        data = res.json()
+        temp = data["main"]["temp"]
+        humidity = data["main"]["humidity"]
+        desc = data["weather"][0]["description"]
+        
+        alerts = []
+        if humidity > 80:
+            alerts.append("High humidity may increase fungal infection risk")
+        if temp > 35:
+            alerts.append("High temperature - ensure adequate irrigation")
+        
+        return {
+            "location": city,
+            "temperature": temp,
+            "humidity": humidity,
+            "description": desc,
+            "rainfall": None,
+            "alerts": alerts
+        }
+    except Exception as e:
+        print(f"Advisor weather error: {e}")
+        return {"location": "Unknown", "temperature": 25, "humidity": 60, "description": "Clear", "alerts": []}
+
+@app.get("/api/advisor/crops")
+async def get_crop_recommendations(current_user: dict = Depends(get_current_user)):
+    try:
+        location = current_user.get("location", "India")
+        
+        # Get user query history for interest analysis
+        from boto3.dynamodb.conditions import Key
+        response = queries_table.query(
+            IndexName='user_phone-index',
+            KeyConditionExpression=Key('user_phone').eq(current_user["phone_number"]),
+            Limit=20
+        )
+        queries = response.get('Items', [])
+        
+        # Simple ML simulation (Random Forest would go here)
+        base_crops = [
+            {"name": "Rice", "ml_score": 85, "regional_score": 90, "interest_score": 70},
+            {"name": "Wheat", "ml_score": 80, "regional_score": 85, "interest_score": 60},
+            {"name": "Cotton", "ml_score": 75, "regional_score": 70, "interest_score": 50},
+            {"name": "Sugarcane", "ml_score": 70, "regional_score": 75, "interest_score": 40},
+            {"name": "Maize", "ml_score": 78, "regional_score": 65, "interest_score": 55},
+            {"name": "Soybean", "ml_score": 72, "regional_score": 60, "interest_score": 45}
+        ]
+        
+        # Calculate final scores
+        for crop in base_crops:
+            crop["score"] = int(0.5 * crop["ml_score"] + 0.3 * crop["regional_score"] + 0.2 * crop["interest_score"])
+        
+        # Sort by score
+        base_crops.sort(key=lambda x: x["score"], reverse=True)
+        
+        # Generate explanations using Azure OpenAI
+        crops_with_details = []
+        for crop in base_crops[:6]:
+            explanation_response = azure_client.chat.completions.create(
+                model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
+                messages=[
+                    {"role": "system", "content": "You are a crop advisor. Provide a brief 1-sentence explanation for why this crop is suitable."},
+                    {"role": "user", "content": f"Why is {crop['name']} suitable for {location}?"}
+                ],
+                max_tokens=50,
+                temperature=0.7
+            )
+            
+            crops_with_details.append({
+                "name": crop["name"],
+                "score": crop["score"],
+                "explanation": explanation_response.choices[0].message.content,
+                "water_requirement": "Medium" if crop["score"] > 75 else "Low",
+                "yield_potential": "High" if crop["score"] > 80 else "Medium",
+                "market_price": 2000 + (crop["score"] * 20)
+            })
+        
+        return {"crops": crops_with_details}
+    except Exception as e:
+        print(f"Crop recommendations error: {e}")
+        return {"crops": []}
+
+@app.get("/api/advisor/strategies")
+async def get_farming_strategies(current_user: dict = Depends(get_current_user)):
+    try:
+        strategies = [
+            {
+                "name": "Drip Irrigation",
+                "explanation": "Save up to 60% water with drip irrigation. Delivers water directly to plant roots, reducing evaporation and improving crop yield.",
+                "link": "https://agricoop.gov.in"
+            },
+            {
+                "name": "Mulching",
+                "explanation": "Cover soil with organic material to retain moisture, suppress weeds, and improve soil health naturally.",
+                "link": "https://icar.org.in"
+            },
+            {
+                "name": "Precision Fertigation",
+                "explanation": "Combine fertilizer with irrigation for optimal nutrient delivery. Reduces fertilizer waste and improves crop nutrition.",
+                "link": "https://agricoop.gov.in"
+            },
+            {
+                "name": "Organic Pest Control",
+                "explanation": "Use neem oil, beneficial insects, and crop rotation to control pests naturally without harmful chemicals.",
+                "link": "https://icar.org.in"
+            },
+            {
+                "name": "Crop Rotation",
+                "explanation": "Alternate different crops each season to improve soil fertility, break pest cycles, and increase yields.",
+                "link": "https://agricoop.gov.in"
+            },
+            {
+                "name": "Soil Testing",
+                "explanation": "Regular soil testing helps determine nutrient deficiencies and pH levels for better fertilizer management.",
+                "link": "https://icar.org.in"
+            }
+        ]
+        
+        return {"strategies": strategies}
+    except Exception as e:
+        print(f"Strategies error: {e}")
+        return {"strategies": []}
+
+
+# Voice Assistant Endpoint
+@app.post("/api/advisor/assistant")
+async def advisor_assistant(file: Optional[UploadFile] = File(None), text: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+    try:
+        query_text = text
+        
+        # Handle voice input
+        if file:
+            audio_bytes = await file.read()
+            file_extension = file.filename.split(".")[-1].lower() if file.filename else "wav"
+            query_text = await transcribe_service.transcribe_audio(audio_bytes, file_extension, current_user.get("language", "en"))
+        
+        if not query_text:
+            raise HTTPException(status_code=400, detail="No query provided")
+        
+        query_lower = query_text.lower()
+        location = current_user.get("location", "India")
+        
+        # Intent detection
+        if any(word in query_lower for word in ['crop', 'grow', 'plant', 'cultivate', 'recommend', 'फसल', 'खेती']):
+            # Crop recommendation query
+            from boto3.dynamodb.conditions import Key
+            response = queries_table.query(
+                IndexName='user_phone-index',
+                KeyConditionExpression=Key('user_phone').eq(current_user["phone_number"]),
+                Limit=10
+            )
+            queries = response.get('Items', [])
+            
+            crops = ["Rice", "Wheat", "Cotton", "Sugarcane", "Maize"]
+            ai_response = azure_client.chat.completions.create(
+                model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
+                messages=[
+                    {"role": "system", "content": f"You are GramVaani crop advisor. User location: {location}. Recommend suitable crops based on their query. Be concise."},
+                    {"role": "user", "content": query_text}
+                ],
+                max_tokens=300,
+                temperature=0.7
+            )
+            return {"transcript": query_text, "response": ai_response.choices[0].message.content}
+        
+        elif any(word in query_lower for word in ['strategy', 'technique', 'method', 'irrigation', 'drip', 'mulch', 'तकनीक', 'सिंचाई']):
+            # Farming strategy query
+            strategies = [
+                "Drip Irrigation: Save 60% water by delivering water directly to roots",
+                "Mulching: Cover soil to retain moisture and suppress weeds",
+                "Crop Rotation: Alternate crops to improve soil fertility"
+            ]
+            ai_response = azure_client.chat.completions.create(
+                model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
+                messages=[
+                    {"role": "system", "content": f"You are GramVaani farming advisor. Explain farming strategies. Available: {', '.join(strategies)}. Be practical."},
+                    {"role": "user", "content": query_text}
+                ],
+                max_tokens=300,
+                temperature=0.7
+            )
+            return {"transcript": query_text, "response": ai_response.choices[0].message.content}
+        
+        elif any(word in query_lower for word in ['weather', 'rain', 'temperature', 'climate', 'मौसम', 'बारिश']):
+            # Weather impact query
+            api_key = os.getenv("OPENWEATHER_API_KEY")
+            city = location.split(",")[0].strip()
+            url = f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}&units=metric"
+            res = requests.get(url, timeout=10)
+            
+            if res.status_code == 200:
+                data = res.json()
+                temp = data["main"]["temp"]
+                humidity = data["main"]["humidity"]
+                desc = data["weather"][0]["description"]
+                
+                ai_response = azure_client.chat.completions.create(
+                    model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
+                    messages=[
+                        {"role": "system", "content": f"You are GramVaani weather advisor. Current weather in {city}: {desc}, {temp}°C, {humidity}% humidity. Explain impact on crops."},
+                        {"role": "user", "content": query_text}
+                    ],
+                    max_tokens=300,
+                    temperature=0.7
+                )
+                return {"transcript": query_text, "response": ai_response.choices[0].message.content}
+        
+        elif any(word in query_lower for word in ['soil', 'ph', 'nitrogen', 'fertilizer', 'nutrient', 'मिट्टी', 'खाद']):
+            # Soil health query
+            ai_response = azure_client.chat.completions.create(
+                model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
+                messages=[
+                    {"role": "system", "content": "You are GramVaani soil health advisor. Provide practical advice on soil testing, pH management, and fertilizer use."},
+                    {"role": "user", "content": query_text}
+                ],
+                max_tokens=300,
+                temperature=0.7
+            )
+            return {"transcript": query_text, "response": ai_response.choices[0].message.content}
+        
+        # General farming guidance
+        ai_response = azure_client.chat.completions.create(
+            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
+            messages=[
+                {"role": "system", "content": f"You are GramVaani, AI assistant for farmers in {location}. Provide practical farming guidance. Be concise and helpful."},
+                {"role": "user", "content": query_text}
+            ],
+            max_tokens=300,
+            temperature=0.7
+        )
+        return {"transcript": query_text, "response": ai_response.choices[0].message.content}
+        
+    except Exception as e:
+        print(f"Assistant error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Agriculture News Endpoint with Images
+@app.get("/api/advisor/news")
+async def get_agriculture_news(current_user: dict = Depends(get_current_user)):
+    try:
+        news_api_key = os.getenv("NEWS_API_KEY")
+        fallback_image = "https://images.unsplash.com/photo-1592982537447-6f2a6a0a5f17?w=400"
+        
+        if not news_api_key:
+            return {
+                "articles": [
+                    {"title": "Cotton prices expected to rise this month", "summary": "Export demand has increased cotton prices by 12%.", "source": "AgriMarket News", "url": "https://agricoop.gov.in", "image": fallback_image},
+                    {"title": "New irrigation subsidy scheme announced", "summary": "Government announces 50% subsidy on drip irrigation systems.", "source": "Ministry of Agriculture", "url": "https://agricoop.gov.in", "image": "https://images.unsplash.com/photo-1625246333195-78d9c38ad449?w=400"},
+                    {"title": "Weather alert: Heavy rainfall expected", "summary": "IMD predicts heavy rainfall. Farmers advised to postpone fertilizer application.", "source": "India Meteorological Department", "url": "https://icar.org.in", "image": "https://images.unsplash.com/photo-1601597111158-2fceff292cdc?w=400"}
+                ]
+            }
+        
+        query = "(agriculture OR farming OR crop OR fertilizer OR irrigation OR farmer OR pest OR disease) AND NOT (politics OR entertainment OR sports)"
+        url = f"https://newsapi.org/v2/everything?q={query}&language=en&sortBy=publishedAt&pageSize=12&apiKey={news_api_key}"
+        response = requests.get(url, timeout=10)
+        
+        if response.status_code != 200:
+            return {"articles": [{"title": "Cotton prices expected to rise", "summary": "Export demand increased.", "source": "AgriMarket News", "url": "https://agricoop.gov.in", "image": fallback_image}]}
+        
+        data = response.json()
+        articles = []
+        
+        for article in data.get("articles", [])[:12]:
+            image_url = article.get("urlToImage") or fallback_image
+            description = article.get("description", "")
+            if description and len(description) > 150:
+                try:
+                    summary_response = azure_client.chat.completions.create(
+                        model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
+                        messages=[{"role": "system", "content": "Summarize in 1-2 sentences (max 100 words)."}, {"role": "user", "content": description}],
+                        max_tokens=80, temperature=0.5
+                    )
+                    description = summary_response.choices[0].message.content
+                except:
+                    description = description[:150] + "..."
+            
+            articles.append({"title": article.get("title", "Agriculture News"), "summary": description or "Read more for details.", "source": article.get("source", {}).get("name", "News Source"), "url": article.get("url", "https://agricoop.gov.in"), "image": image_url})
+        
+        return {"articles": articles}
+    except Exception as e:
+        print(f"News API error: {e}")
+        fallback_image = "https://images.unsplash.com/photo-1592982537447-6f2a6a0a5f17?w=400"
+        return {"articles": [{"title": "Cotton prices expected to rise", "summary": "Export demand increased.", "source": "AgriMarket News", "url": "https://agricoop.gov.in", "image": fallback_image}]}
+
+
+>>>>>>> Stashed changes
