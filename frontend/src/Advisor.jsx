@@ -33,6 +33,12 @@ function Advisor({ user, onLogout, onNavigate, onOpenVoiceAssistant }) {
     return messages[Math.floor(Math.random() * messages.length)]
   })
 
+  const handleNavigate = (page) => {
+    if (onNavigate) {
+      onNavigate(page)
+    }
+  }
+
   useEffect(() => {
     fetchAdvisorData()
     fetchNews()
@@ -127,7 +133,7 @@ function Advisor({ user, onLogout, onNavigate, onOpenVoiceAssistant }) {
   if (loading) {
     return (
       <div className="advisor-container">
-        <Navbar user={user} activePage="advisor" onNavigate={onNavigate} onLogout={onLogout} language={user.language} />
+        <Navbar user={user} activePage="advisor" onNavigate={handleNavigate} onLogout={onLogout} language={user.language} />
         <div className="advisor-loading">
           <div className="loading-logo">🌾</div>
           <div className="loading-quote">"{loadingQuote}"</div>
@@ -140,7 +146,7 @@ function Advisor({ user, onLogout, onNavigate, onOpenVoiceAssistant }) {
 
   return (
     <div className="advisor-container">
-      <Navbar user={user} activePage="advisor" onNavigate={onNavigate} onLogout={onLogout} language={user.language} />
+      <Navbar user={user} activePage="advisor" onNavigate={handleNavigate} onLogout={onLogout} language={user.language} />
 
       <div className="advisor-content">
         <div className="advisor-header">

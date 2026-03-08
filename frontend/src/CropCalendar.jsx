@@ -208,41 +208,41 @@ const CropCalendar = ({ language = 'en' }) => {
   }
 
   return (
-    <div style={{maxWidth: '1200px', margin: '0 auto', padding: '20px'}}>
+    <div style={{maxWidth: '1200px', margin: '0 auto', padding: '20px', paddingTop: window.innerWidth <= 768 ? '100px' : '90px', paddingBottom: window.innerWidth <= 768 ? '120px' : '100px'}} className="crop-calendar-container">
       {/* Header Info Box */}
       <div style={{
         background: 'linear-gradient(135deg, #2e7d32 0%, #4caf50 100%)',
         color: 'white',
-        padding: '30px',
+        padding: window.innerWidth <= 768 ? '20px' : '30px',
         borderRadius: '15px',
         marginBottom: '30px',
         boxShadow: '0 4px 15px rgba(0,0,0,0.2)'
       }}>
-        <h1 style={{fontSize: '32px', fontWeight: 'bold', marginBottom: '20px', textAlign: 'center'}}>
+        <h1 style={{fontSize: window.innerWidth <= 768 ? '24px' : '32px', fontWeight: 'bold', marginBottom: '20px', textAlign: 'center'}}>
           🌾 {t('title')}
         </h1>
         
-        <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginTop: '20px'}}>
+        <div style={{display: 'grid', gridTemplateColumns: window.innerWidth <= 768 ? '1fr' : 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginTop: '20px'}}>
           <div style={{background: 'rgba(255,255,255,0.2)', padding: '15px', borderRadius: '10px', textAlign: 'center'}}>
             <div style={{fontSize: '14px', opacity: 0.9, marginBottom: '5px'}}>📅 {t('season')}</div>
-            <div style={{fontSize: '24px', fontWeight: 'bold'}}>{calendarData.current_season.toUpperCase()}</div>
+            <div style={{fontSize: window.innerWidth <= 768 ? '20px' : '24px', fontWeight: 'bold'}}>{calendarData.current_season.toUpperCase()}</div>
           </div>
           
           <div style={{background: 'rgba(255,255,255,0.2)', padding: '15px', borderRadius: '10px', textAlign: 'center'}}>
             <div style={{fontSize: '14px', opacity: 0.9, marginBottom: '5px'}}>📍 {t('location')}</div>
-            <div style={{fontSize: '18px', fontWeight: 'bold'}}>{calendarData.user_location}</div>
+            <div style={{fontSize: window.innerWidth <= 768 ? '16px' : '18px', fontWeight: 'bold'}}>{calendarData.user_location}</div>
           </div>
           
           {calendarData.weather && (
             <>
               <div style={{background: 'rgba(255,255,255,0.2)', padding: '15px', borderRadius: '10px', textAlign: 'center'}}>
                 <div style={{fontSize: '14px', opacity: 0.9, marginBottom: '5px'}}>🌡️ {t('temp')}</div>
-                <div style={{fontSize: '24px', fontWeight: 'bold'}}>{calendarData.weather.temp}°C</div>
+                <div style={{fontSize: window.innerWidth <= 768 ? '20px' : '24px', fontWeight: 'bold'}}>{calendarData.weather.temp}°C</div>
               </div>
               
               <div style={{background: 'rgba(255,255,255,0.2)', padding: '15px', borderRadius: '10px', textAlign: 'center'}}>
                 <div style={{fontSize: '14px', opacity: 0.9, marginBottom: '5px'}}>💧 {t('humidity')}</div>
-                <div style={{fontSize: '24px', fontWeight: 'bold'}}>{calendarData.weather.humidity}%</div>
+                <div style={{fontSize: window.innerWidth <= 768 ? '20px' : '24px', fontWeight: 'bold'}}>{calendarData.weather.humidity}%</div>
               </div>
             </>
           )}
@@ -251,15 +251,16 @@ const CropCalendar = ({ language = 'en' }) => {
 
       {/* Crops Table */}
       {calendarData.recommended_crops.length > 0 ? (
-        <div style={{background: 'white', borderRadius: '15px', overflow: 'hidden', boxShadow: '0 2px 10px rgba(0,0,0,0.1)'}}>
-          <table style={{width: '100%', borderCollapse: 'collapse', fontSize: '16px'}}>
+        <div style={{background: 'white', borderRadius: '15px', overflow: window.innerWidth <= 768 ? 'auto' : 'hidden', boxShadow: '0 2px 10px rgba(0,0,0,0.1)'}}>
+          <div style={{overflowX: 'auto', WebkitOverflowScrolling: 'touch'}}>
+          <table style={{width: '100%', borderCollapse: 'collapse', fontSize: window.innerWidth <= 768 ? '14px' : '16px', minWidth: window.innerWidth <= 768 ? '800px' : 'auto'}}>
             <thead>
               <tr style={{background: '#4caf50', color: 'white'}}>
-                <th style={{padding: '20px', textAlign: 'left', fontWeight: 'bold', fontSize: '18px'}}>🌱 {t('cropName')}</th>
-                <th style={{padding: '20px', textAlign: 'left', fontWeight: 'bold', fontSize: '18px'}}>📅 {t('planting')}</th>
-                <th style={{padding: '20px', textAlign: 'left', fontWeight: 'bold', fontSize: '18px'}}>🌾 {t('harvest')}</th>
-                <th style={{padding: '20px', textAlign: 'left', fontWeight: 'bold', fontSize: '18px'}}>⏱️ {t('duration')}</th>
-                <th style={{padding: '20px', textAlign: 'left', fontWeight: 'bold', fontSize: '18px'}}>💡 {t('tips')}</th>
+                <th style={{padding: window.innerWidth <= 768 ? '15px 10px' : '20px', textAlign: 'left', fontWeight: 'bold', fontSize: window.innerWidth <= 768 ? '16px' : '18px'}}>🌱 {t('cropName')}</th>
+                <th style={{padding: window.innerWidth <= 768 ? '15px 10px' : '20px', textAlign: 'left', fontWeight: 'bold', fontSize: window.innerWidth <= 768 ? '16px' : '18px'}}>📅 {t('planting')}</th>
+                <th style={{padding: window.innerWidth <= 768 ? '15px 10px' : '20px', textAlign: 'left', fontWeight: 'bold', fontSize: window.innerWidth <= 768 ? '16px' : '18px'}}>🌾 {t('harvest')}</th>
+                <th style={{padding: window.innerWidth <= 768 ? '15px 10px' : '20px', textAlign: 'left', fontWeight: 'bold', fontSize: window.innerWidth <= 768 ? '16px' : '18px'}}>⏱️ {t('duration')}</th>
+                <th style={{padding: window.innerWidth <= 768 ? '15px 10px' : '20px', textAlign: 'left', fontWeight: 'bold', fontSize: window.innerWidth <= 768 ? '16px' : '18px'}}>💡 {t('tips')}</th>
               </tr>
             </thead>
             <tbody>
@@ -268,34 +269,34 @@ const CropCalendar = ({ language = 'en' }) => {
                   background: index % 2 === 0 ? '#f9f9f9' : 'white',
                   borderBottom: '1px solid #e0e0e0'
                 }}>
-                  <td style={{padding: '20px', fontWeight: 'bold', fontSize: '18px', color: '#2e7d32'}}>
+                  <td style={{padding: window.innerWidth <= 768 ? '15px 10px' : '20px', fontWeight: 'bold', fontSize: window.innerWidth <= 768 ? '16px' : '18px', color: '#2e7d32'}}>
                     {crop.name}
                     {crop.hindi && <div style={{fontSize: '14px', color: '#666', fontWeight: 'normal', marginTop: '5px'}}>{crop.hindi}</div>}
                   </td>
-                  <td style={{padding: '20px'}}>
+                  <td style={{padding: window.innerWidth <= 768 ? '15px 10px' : '20px'}}>
                     {crop.planting ? (
                       <div>
-                        <div style={{fontWeight: 'bold', color: '#1976d2'}}>{crop.planting.start}</div>
-                        <div style={{fontSize: '14px', color: '#666'}}>{t('to')} {crop.planting.end}</div>
+                        <div style={{fontWeight: 'bold', color: '#1976d2', fontSize: window.innerWidth <= 768 ? '14px' : '16px'}}>{crop.planting.start}</div>
+                        <div style={{fontSize: window.innerWidth <= 768 ? '12px' : '14px', color: '#666'}}>{t('to')} {crop.planting.end}</div>
                       </div>
                     ) : '-'}
                   </td>
-                  <td style={{padding: '20px'}}>
+                  <td style={{padding: window.innerWidth <= 768 ? '15px 10px' : '20px'}}>
                     {crop.harvesting ? (
                       <div>
-                        <div style={{fontWeight: 'bold', color: '#f57c00'}}>{crop.harvesting.start}</div>
-                        <div style={{fontSize: '14px', color: '#666'}}>{t('to')} {crop.harvesting.end}</div>
+                        <div style={{fontWeight: 'bold', color: '#f57c00', fontSize: window.innerWidth <= 768 ? '14px' : '16px'}}>{crop.harvesting.start}</div>
+                        <div style={{fontSize: window.innerWidth <= 768 ? '12px' : '14px', color: '#666'}}>{t('to')} {crop.harvesting.end}</div>
                       </div>
                     ) : '-'}
                   </td>
-                  <td style={{padding: '20px'}}>
+                  <td style={{padding: window.innerWidth <= 768 ? '15px 10px' : '20px'}}>
                     {crop.duration_days ? (
-                      <div style={{fontWeight: 'bold', fontSize: '18px', color: '#7b1fa2'}}>
+                      <div style={{fontWeight: 'bold', fontSize: window.innerWidth <= 768 ? '16px' : '18px', color: '#7b1fa2'}}>
                         {crop.duration_days} {t('days')}
                       </div>
                     ) : '-'}
                   </td>
-                  <td style={{padding: '20px', fontSize: '14px', lineHeight: '1.6'}}>
+                  <td style={{padding: window.innerWidth <= 768 ? '15px 10px' : '20px', fontSize: window.innerWidth <= 768 ? '13px' : '14px', lineHeight: '1.6'}}>
                     {crop.tips && <div style={{marginBottom: '8px'}}>{crop.tips}</div>}
                     {crop.soil_type && (
                       <div style={{background: '#fff3e0', padding: '8px', borderRadius: '5px', marginBottom: '5px'}}>
@@ -312,6 +313,7 @@ const CropCalendar = ({ language = 'en' }) => {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       ) : (
         <div style={{

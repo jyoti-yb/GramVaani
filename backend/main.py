@@ -843,6 +843,32 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         "location": current_user["location"]
     }
 
+class ProfileUpdate(BaseModel):
+    phone_number: Optional[str] = None
+    language: Optional[str] = None
+    location: Optional[str] = None
+
+@app.put("/api/profile")
+async def update_profile(profile: ProfileUpdate, current_user: dict = Depends(get_current_user)):
+    try:
+        update_data = {}
+        if profile.language:
+            update_data["language"] = profile.language
+        if profile.location:
+            update_data["location"] = profile.location
+        
+        if update_data:
+            users_table.update_item(
+                Key={'phone_number': current_user["phone_number"]},
+                UpdateExpression='SET ' + ', '.join([f'{k} = :{k}' for k in update_data.keys()]),
+                ExpressionAttributeValues={f':{k}': v for k, v in update_data.items()}
+            )
+        
+        return {"status": "success", "message": "Profile updated"}
+    except Exception as e:
+        print(f"Profile update error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/query-history")
 async def get_query_history(current_user: dict = Depends(get_current_user)):
     """Fetch user's query history from DynamoDB"""

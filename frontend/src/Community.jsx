@@ -21,6 +21,12 @@ function Community({ user, onBack, onLogout, onNavigate }) {
     language: user?.language || 'en'
   })
 
+  const handleNavigate = (page) => {
+    if (onNavigate) {
+      onNavigate(page)
+    }
+  }
+
   useEffect(() => {
     fetchCommunityData()
   }, [activeTab])
@@ -79,7 +85,7 @@ function Community({ user, onBack, onLogout, onNavigate }) {
 
   return (
     <div className="community-container">
-      <Navbar user={user} activePage="community" onNavigate={onNavigate} onLogout={onLogout} language={user?.language || 'en'} />
+      <Navbar user={user} activePage="community" onNavigate={handleNavigate} onLogout={onLogout} language={user?.language || 'en'} />
 
       <div className="community-content">
         <div className="community-header">

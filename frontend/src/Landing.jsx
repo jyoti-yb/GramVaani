@@ -111,11 +111,11 @@ function Landing({ onGetStarted }) {
             <div className="tech-list">
               <div className="tech-list-item">
                 <CheckCircle size={20} />
-                <span>Azure OpenAI (GPT-4) for intelligent responses</span>
+                <span>Amazon Bedrock (Claude 3) for intelligent responses</span>
               </div>
               <div className="tech-list-item">
                 <CheckCircle size={20} />
-                <span>Azure Speech & Amazon Polly for voice synthesis</span>
+                <span>Amazon Polly for natural voice synthesis</span>
               </div>
               <div className="tech-list-item">
                 <CheckCircle size={20} />
@@ -123,11 +123,11 @@ function Landing({ onGetStarted }) {
               </div>
               <div className="tech-list-item">
                 <CheckCircle size={20} />
-                <span>MongoDB Atlas for secure data storage</span>
+                <span>Amazon Translate for multilingual support</span>
               </div>
               <div className="tech-list-item">
                 <CheckCircle size={20} />
-                <span>React & FastAPI for modern web experience</span>
+                <span>AWS DynamoDB & MongoDB for scalable data storage</span>
               </div>
             </div>
           </div>

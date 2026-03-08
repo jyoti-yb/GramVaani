@@ -19,6 +19,12 @@ function Profile({ user, onBack, onUserUpdate, onLogout, onNavigate }) {
   const [showMobileMenu, setShowMobileMenu] = useState(false)
   const [activeSection, setActiveSection] = useState('profile')
 
+  const handleNavigate = (page) => {
+    if (onNavigate) {
+      onNavigate(page)
+    }
+  }
+
   useEffect(() => {
     fetchUserQueries()
   }, [])
@@ -99,7 +105,7 @@ function Profile({ user, onBack, onUserUpdate, onLogout, onNavigate }) {
 
   return (
     <div className="profile-container">
-      <Navbar user={user} activePage="profile" onNavigate={onNavigate} onLogout={onLogout} language={user?.language || 'en'} />
+      <Navbar user={user} activePage="profile" onNavigate={handleNavigate} onLogout={onLogout} language={user?.language || 'en'} />
       <div className="profile-content-wrapper">
         <div className="mobile-menu-toggle">
           <button onClick={() => setShowMobileMenu(!showMobileMenu)} className="menu-button">
@@ -141,7 +147,6 @@ function Profile({ user, onBack, onUserUpdate, onLogout, onNavigate }) {
         
         <div className="profile-grid">
           <div className="profile-main">
-            {(activeSection === 'profile' || window.innerWidth > 768) && (
             <div className="profile-card glass-card">
               <div className="card-header">
                 <div className="header-icon">
@@ -236,9 +241,6 @@ function Profile({ user, onBack, onUserUpdate, onLogout, onNavigate }) {
               </div>
             </div>
 
-            )}
-            
-            {(activeSection === 'history' || window.innerWidth > 768) && (
             <div className="activity-card glass-card">
               <div className="card-header">
                 <div className="header-icon">
@@ -292,11 +294,9 @@ function Profile({ user, onBack, onUserUpdate, onLogout, onNavigate }) {
                 </div>
               )}
             </div>
-            )}
           </div>
 
           <div className="profile-sidebar">
-            {(activeSection === 'stats' || window.innerWidth > 768) && (
             <div className="stats-card glass-card">
               <div className="card-header">
                 <div className="header-icon">
@@ -328,9 +328,7 @@ function Profile({ user, onBack, onUserUpdate, onLogout, onNavigate }) {
                 </div>
               </div>
             </div>
-            )}
 
-            {(activeSection === 'types' || window.innerWidth > 768) && (
             <div className="types-card glass-card">
               <div className="card-header">
                 <div className="header-icon">
@@ -364,7 +362,6 @@ function Profile({ user, onBack, onUserUpdate, onLogout, onNavigate }) {
                 ))}
               </div>
             </div>
-            )}
           </div>
         </div>
       </div>

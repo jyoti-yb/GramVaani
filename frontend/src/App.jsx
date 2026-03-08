@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react'
 import { Mic, MicOff, Play, Pause, Loader, LogOut, User, Award, Users, Calendar } from 'lucide-react'
 import axios from 'axios'
 import Auth from './Auth'
-import Profile from './Profile'
+import ProfileNew from './ProfileNew'
 import Landing from './Landing'
 import Advisor from './Advisor'
 import Community from './Community'
@@ -549,7 +549,7 @@ function App() {
 
   if (showProfile) {
     return (
-      <Profile 
+      <ProfileNew 
         user={user} 
         onBack={() => setShowProfile(false)}
         onUserUpdate={(updatedUser) => {
@@ -558,9 +558,10 @@ function App() {
         }}
         onLogout={handleLogout}
         onNavigate={(page) => {
-          if (page === 'home') { setShowProfile(false); setShowAdvisor(false); setShowCommunity(false); }
-          else if (page === 'advisor') { setShowProfile(false); setShowAdvisor(true); setShowCommunity(false); }
-          else if (page === 'community') { setShowProfile(false); setShowAdvisor(false); setShowCommunity(true); }
+          if (page === 'home') { setShowProfile(false); setShowAdvisor(false); setShowCommunity(false); setShowCalendar(false); }
+          else if (page === 'advisor') { setShowProfile(false); setShowAdvisor(true); setShowCommunity(false); setShowCalendar(false); }
+          else if (page === 'community') { setShowProfile(false); setShowAdvisor(false); setShowCommunity(true); setShowCalendar(false); }
+          else if (page === 'calendar') { setShowProfile(false); setShowAdvisor(false); setShowCommunity(false); setShowCalendar(true); }
         }}
       />
     )
@@ -571,9 +572,10 @@ function App() {
       <Advisor 
         user={user}
         onNavigate={(page) => {
-          if (page === 'home') { setShowProfile(false); setShowAdvisor(false); setShowCommunity(false); }
-          else if (page === 'profile') { setShowProfile(true); setShowAdvisor(false); }
-          else if (page === 'community') { setShowCommunity(true); setShowAdvisor(false); }
+          if (page === 'home') { setShowProfile(false); setShowAdvisor(false); setShowCommunity(false); setShowCalendar(false); }
+          else if (page === 'profile') { setShowProfile(true); setShowAdvisor(false); setShowCommunity(false); setShowCalendar(false); }
+          else if (page === 'community') { setShowCommunity(true); setShowAdvisor(false); setShowProfile(false); setShowCalendar(false); }
+          else if (page === 'calendar') { setShowCalendar(true); setShowAdvisor(false); setShowProfile(false); setShowCommunity(false); }
         }}
         onLogout={handleLogout}
         onOpenVoiceAssistant={() => setShowAdvisor(false)}
@@ -588,10 +590,11 @@ function App() {
         onBack={() => setShowCommunity(false)}
         onLogout={handleLogout}
         onNavigate={(page) => {
-          if (page === 'landing') { setShowLanding(true); setShowProfile(false); setShowAdvisor(false); setShowCommunity(false); }
-          else if (page === 'home') { setShowProfile(false); setShowAdvisor(false); setShowCommunity(false); }
-          else if (page === 'profile') { setShowProfile(true); setShowAdvisor(false); setShowCommunity(false); }
-          else if (page === 'advisor') { setShowProfile(false); setShowAdvisor(true); setShowCommunity(false); }
+          if (page === 'landing') { setShowLanding(true); setShowProfile(false); setShowAdvisor(false); setShowCommunity(false); setShowCalendar(false); }
+          else if (page === 'home') { setShowProfile(false); setShowAdvisor(false); setShowCommunity(false); setShowCalendar(false); }
+          else if (page === 'profile') { setShowProfile(true); setShowAdvisor(false); setShowCommunity(false); setShowCalendar(false); }
+          else if (page === 'advisor') { setShowProfile(false); setShowAdvisor(true); setShowCommunity(false); setShowCalendar(false); }
+          else if (page === 'calendar') { setShowProfile(false); setShowAdvisor(false); setShowCommunity(false); setShowCalendar(true); }
         }}
       />
     )
@@ -602,9 +605,9 @@ function App() {
       <div className="container">
         <Navbar user={user} activePage="calendar" onNavigate={(page) => {
           if (page === 'home') { setShowProfile(false); setShowAdvisor(false); setShowCommunity(false); setShowCalendar(false); }
-          else if (page === 'advisor') { setShowAdvisor(true); setShowCalendar(false); }
-          else if (page === 'community') { setShowCommunity(true); setShowCalendar(false); }
-          else if (page === 'profile') { setShowProfile(true); setShowCalendar(false); }
+          else if (page === 'advisor') { setShowAdvisor(true); setShowCalendar(false); setShowProfile(false); setShowCommunity(false); }
+          else if (page === 'community') { setShowCommunity(true); setShowCalendar(false); setShowProfile(false); setShowAdvisor(false); }
+          else if (page === 'profile') { setShowProfile(true); setShowCalendar(false); setShowAdvisor(false); setShowCommunity(false); }
         }} onLogout={handleLogout} language={uiLanguage} />
         <CropCalendar language={uiLanguage} key={uiLanguage} />
       </div>
@@ -614,9 +617,10 @@ function App() {
   return (
     <div className="container" key={user?.language}>
       <Navbar user={user} activePage="home" onNavigate={(page) => {
-        if (page === 'advisor') setShowAdvisor(true)
-        else if (page === 'community') setShowCommunity(true)
-        else if (page === 'profile') setShowProfile(true)
+        if (page === 'advisor') { setShowAdvisor(true); setShowProfile(false); setShowCommunity(false); setShowCalendar(false); }
+        else if (page === 'community') { setShowCommunity(true); setShowProfile(false); setShowAdvisor(false); setShowCalendar(false); }
+        else if (page === 'calendar') { setShowCalendar(true); setShowProfile(false); setShowAdvisor(false); setShowCommunity(false); }
+        else if (page === 'profile') { setShowProfile(true); setShowAdvisor(false); setShowCommunity(false); setShowCalendar(false); }
       }} onLogout={handleLogout} language={uiLanguage} />
 
       <div className="main-card">
