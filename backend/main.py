@@ -1,4 +1,4 @@
-from click import prompt
+﻿from click import prompt
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -733,12 +733,6 @@ async def process_audio(file: UploadFile = File(...), language: str = "hi", curr
     except HTTPException:
         raise
     except Exception as e:
-<<<<<<< Updated upstream
-        print(f"Process audio error: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Error processing audio: {str(e)}")
-=======
         print(f"Audio error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
@@ -899,7 +893,7 @@ async def advisor_assistant(file: Optional[UploadFile] = File(None), text: Optio
         location = current_user.get("location", "India")
         
         # Intent detection
-        if any(word in query_lower for word in ['crop', 'grow', 'plant', 'cultivate', 'recommend', 'फसल', 'खेती']):
+        if any(word in query_lower for word in ['crop', 'grow', 'plant', 'cultivate', 'recommend', 'à¤«à¤¸à¤²', 'à¤–à¥‡à¤¤à¥€']):
             # Crop recommendation query
             from boto3.dynamodb.conditions import Key
             response = queries_table.query(
@@ -921,7 +915,7 @@ async def advisor_assistant(file: Optional[UploadFile] = File(None), text: Optio
             )
             return {"transcript": query_text, "response": ai_response.choices[0].message.content}
         
-        elif any(word in query_lower for word in ['strategy', 'technique', 'method', 'irrigation', 'drip', 'mulch', 'तकनीक', 'सिंचाई']):
+        elif any(word in query_lower for word in ['strategy', 'technique', 'method', 'irrigation', 'drip', 'mulch', 'à¤¤à¤•à¤¨à¥€à¤•', 'à¤¸à¤¿à¤‚à¤šà¤¾à¤ˆ']):
             # Farming strategy query
             strategies = [
                 "Drip Irrigation: Save 60% water by delivering water directly to roots",
@@ -939,7 +933,7 @@ async def advisor_assistant(file: Optional[UploadFile] = File(None), text: Optio
             )
             return {"transcript": query_text, "response": ai_response.choices[0].message.content}
         
-        elif any(word in query_lower for word in ['weather', 'rain', 'temperature', 'climate', 'मौसम', 'बारिश']):
+        elif any(word in query_lower for word in ['weather', 'rain', 'temperature', 'climate', 'à¤®à¥Œà¤¸à¤®', 'à¤¬à¤¾à¤°à¤¿à¤¶']):
             # Weather impact query
             api_key = os.getenv("OPENWEATHER_API_KEY")
             city = location.split(",")[0].strip()
@@ -955,7 +949,7 @@ async def advisor_assistant(file: Optional[UploadFile] = File(None), text: Optio
                 ai_response = azure_client.chat.completions.create(
                     model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
                     messages=[
-                        {"role": "system", "content": f"You are GramVaani weather advisor. Current weather in {city}: {desc}, {temp}°C, {humidity}% humidity. Explain impact on crops."},
+                        {"role": "system", "content": f"You are GramVaani weather advisor. Current weather in {city}: {desc}, {temp}Â°C, {humidity}% humidity. Explain impact on crops."},
                         {"role": "user", "content": query_text}
                     ],
                     max_tokens=300,
@@ -963,7 +957,7 @@ async def advisor_assistant(file: Optional[UploadFile] = File(None), text: Optio
                 )
                 return {"transcript": query_text, "response": ai_response.choices[0].message.content}
         
-        elif any(word in query_lower for word in ['soil', 'ph', 'nitrogen', 'fertilizer', 'nutrient', 'मिट्टी', 'खाद']):
+        elif any(word in query_lower for word in ['soil', 'ph', 'nitrogen', 'fertilizer', 'nutrient', 'à¤®à¤¿à¤Ÿà¥à¤Ÿà¥€', 'à¤–à¤¾à¤¦']):
             # Soil health query
             ai_response = azure_client.chat.completions.create(
                 model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
@@ -1042,4 +1036,4 @@ async def get_agriculture_news(current_user: dict = Depends(get_current_user)):
         return {"articles": [{"title": "Cotton prices expected to rise", "summary": "Export demand increased.", "source": "AgriMarket News", "url": "https://agricoop.gov.in", "image": fallback_image}]}
 
 
->>>>>>> Stashed changes
+
