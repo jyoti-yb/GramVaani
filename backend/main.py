@@ -22,6 +22,9 @@ from data_aggregator import fetch_all_context_data, format_context_for_llm, fetc
 
 load_dotenv()
 
+# Amazon Translate client
+translate_client = boto3.client('translate', region_name='ap-south-1')
+
 # MongoDB connection for hyperlocal data (with connection pooling)
 mongo_client = MongoClient(
     os.getenv("MONGO_URL"),
@@ -296,12 +299,18 @@ async def verify_webhook(
     hub_verify_token: str = Query(None, alias="hub.verify_token")
 ):
     """Verify WhatsApp webhook subscription"""
+    print(f"Webhook verification attempt: mode={hub_mode}, token_match={hub_verify_token == WHATSAPP_VERIFY_TOKEN}")
+    
+    if not WHATSAPP_VERIFY_TOKEN:
+        print("ERROR: WHATSAPP_VERIFY_TOKEN not configured")
+        raise HTTPException(status_code=500, detail="Server configuration error")
+    
     if hub_mode == "subscribe" and hub_verify_token == WHATSAPP_VERIFY_TOKEN:
-        print("Webhook verified successfully")
+        print("✅ Webhook verified successfully")
         return PlainTextResponse(content=hub_challenge, status_code=200)
-    else:
-        print("Webhook verification failed")
-        raise HTTPException(status_code=403, detail="Verification failed")
+    
+    print(f"❌ Webhook verification failed: mode={hub_mode}, token_provided={bool(hub_verify_token)}")
+    raise HTTPException(status_code=403, detail="Verification failed")
 
 # WhatsApp Webhook Handler
 @app.post("/webhook")
@@ -309,48 +318,66 @@ async def whatsapp_webhook(request: Request):
     """Handle incoming WhatsApp messages"""
     try:
         body = await request.json()
-        print(f"WhatsApp webhook received: {body}")
+        print(f"📱 WhatsApp webhook received: {body}")
         
-        # Quick response to avoid Meta retries
+        # Validate webhook structure
+        if not body.get("entry"):
+            print("⚠️ Invalid webhook: missing 'entry' field")
+            return JSONResponse({"status": "received"}, status_code=200)
+        
+        # Quick response to avoid Meta retries (must respond within 20s)
         asyncio.create_task(process_whatsapp_message(body))
         
         return JSONResponse({"status": "received"}, status_code=200)
     except Exception as e:
-        print(f"Webhook error: {e}")
-        return JSONResponse({"status": "error"}, status_code=200)
+        print(f"❌ Webhook error: {e}")
+        import traceback
+        traceback.print_exc()
+        # Always return 200 to prevent Meta retries
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=200)
 
 async def process_whatsapp_message(body: dict):
     """Process WhatsApp message asynchronously"""
     try:
         entry = body.get("entry", [])
         if not entry:
+            print("⚠️ No entry in webhook body")
             return
         
         changes = entry[0].get("changes", [])
         if not changes:
+            print("⚠️ No changes in entry")
             return
         
         value = changes[0].get("value", {})
         messages = value.get("messages", [])
         
         if not messages:
+            print("⚠️ No messages in value (might be status update)")
             return
         
         message = messages[0]
         sender = message.get("from")
         message_type = message.get("type")
         
+        if not sender:
+            print("⚠️ No sender in message")
+            return
+        
+        print(f"📨 Message from {sender}, type: {message_type}")
+        
         # Only process text messages
         if message_type != "text":
-            await send_whatsapp_message(sender, "Sorry, I can only process text messages at the moment.")
+            await send_whatsapp_message(sender, "Sorry, I can only process text messages at the moment. Please send your question as text.")
             return
         
-        message_text = message.get("text", {}).get("body", "")
+        message_text = message.get("text", {}).get("body", "").strip()
         
         if not message_text:
+            print("⚠️ Empty message text")
             return
         
-        print(f"Processing message from {sender}: {message_text}")
+        print(f"💬 Processing: '{message_text[:100]}...'")
         
         # Get or create user (use phone number as identifier)
         user = await get_or_create_whatsapp_user(sender)
@@ -360,9 +387,10 @@ async def process_whatsapp_message(body: dict):
         
         # Send response back to WhatsApp
         await send_whatsapp_message(sender, ai_response)
+        print(f"✅ Response sent to {sender}")
         
     except Exception as e:
-        print(f"Process WhatsApp message error: {e}")
+        print(f"❌ Process WhatsApp message error: {e}")
         import traceback
         traceback.print_exc()
 
@@ -383,7 +411,7 @@ async def get_or_create_whatsapp_user(phone_number: str) -> dict:
         user = response.get('Item')
         
         if user:
-            print(f"Found existing user: {normalized_phone}")
+            print(f"👤 Found existing user: {normalized_phone}")
             return user
         
         # Try with original phone number
@@ -391,29 +419,34 @@ async def get_or_create_whatsapp_user(phone_number: str) -> dict:
         user = response.get('Item')
         
         if user:
-            print(f"Found existing user: {phone_number}")
+            print(f"👤 Found existing user: {phone_number}")
             return user
         
         # Create new user with default settings
         new_user = {
             "phone_number": normalized_phone,
-            "password": "",
+            "password": "",  # No password for WhatsApp users
             "language": "en",
             "location": "India",
             "created_at": datetime.utcnow().isoformat(),
-            "source": "whatsapp"
+            "source": "whatsapp",
+            "whatsapp_id": phone_number  # Store original WhatsApp ID
         }
         
         users_table.put_item(Item=new_user)
-        print(f"Created new WhatsApp user: {normalized_phone}")
+        print(f"✨ Created new WhatsApp user: {normalized_phone} (original: {phone_number})")
         
         return new_user
     except Exception as e:
-        print(f"Get/create user error: {e}")
+        print(f"❌ Get/create user error: {e}")
+        import traceback
+        traceback.print_exc()
+        # Return fallback user to prevent crashes
         return {
             "phone_number": normalize_phone_number(phone_number),
             "language": "en",
-            "location": "India"
+            "location": "India",
+            "source": "whatsapp"
         }
 
 async def process_ai_query(text: str, user: dict) -> str:
@@ -625,6 +658,14 @@ async def handle_scheme_query(text: str, user: dict, language: str) -> str:
 async def send_whatsapp_message(to: str, message: str):
     """Send message to WhatsApp user via Graph API"""
     try:
+        if not WHATSAPP_ACCESS_TOKEN or not WHATSAPP_PHONE_NUMBER_ID:
+            print("❌ WhatsApp credentials not configured")
+            return
+        
+        # Truncate message if too long (WhatsApp limit: 4096 chars)
+        if len(message) > 4000:
+            message = message[:3997] + "..."
+        
         url = f"https://graph.facebook.com/v22.0/{WHATSAPP_PHONE_NUMBER_ID}/messages"
         
         headers = {
@@ -642,11 +683,13 @@ async def send_whatsapp_message(to: str, message: str):
         response = requests.post(url, json=payload, headers=headers, timeout=10)
         
         if response.status_code == 200:
-            print(f"Message sent successfully to {to}")
+            print(f"✅ Message sent to {to}")
         else:
-            print(f"Failed to send message: {response.status_code} - {response.text}")
+            print(f"❌ Failed to send message: {response.status_code} - {response.text}")
     except Exception as e:
-        print(f"Send WhatsApp message error: {e}")
+        print(f"❌ Send WhatsApp message error: {e}")
+        import traceback
+        traceback.print_exc()
 
 @app.get("/api/location")
 async def get_location():
@@ -1031,6 +1074,145 @@ async def get_village_leaderboard(limit: int = 10):
         print(f"Leaderboard error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/crop-calendar")
+async def get_crop_calendar(current_user: dict = Depends(get_current_user), language: str = "en"):
+    """Get crop calendar with planting and harvesting schedules"""
+    try:
+        import json
+        
+        # Load crop calendar data
+        with open('crop_calendar.json', 'r') as f:
+            calendar_data = json.load(f)
+        
+        # Get current season
+        month = datetime.utcnow().month
+        season_map = calendar_data.get('current_season_info', {})
+        current_season = season_map.get(str(month), 'rabi')
+        
+        # Get user location and weather
+        user_location = current_user.get('location', 'India')
+        city = user_location.split(',')[0].strip()
+        
+        # Fetch weather data
+        weather_info = None
+        try:
+            api_key = os.getenv('OPENWEATHER_API_KEY')
+            if api_key:
+                url = f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}&units=metric"
+                res = requests.get(url, timeout=5)
+                if res.status_code == 200:
+                    data = res.json()
+                    weather_info = {
+                        'temp': round(data['main']['temp']),
+                        'humidity': data['main']['humidity'],
+                        'description': data['weather'][0]['description']
+                    }
+        except Exception as e:
+            print(f"Weather fetch error: {e}")
+        
+        # Filter crops by current season
+        all_crops = calendar_data.get('crops', {})
+        recommended_crops = []
+        
+        for crop_id, crop_info in all_crops.items():
+            crop_season = crop_info.get('season', '')
+            if crop_season == current_season or crop_season == 'year-round':
+                crop_data = {
+                    'id': crop_id,
+                    'name': crop_info.get('name'),
+                    'hindi': crop_info.get('hindi'),
+                    'planting': crop_info.get('planting'),
+                    'harvesting': crop_info.get('harvesting'),
+                    'duration_days': crop_info.get('duration_days'),
+                    'tips': crop_info.get('tips'),
+                    'soil_type': crop_info.get('soil_type', 'Well-drained loamy soil'),
+                    'rainfall': crop_info.get('rainfall', 'Moderate')
+                }
+                recommended_crops.append(crop_data)
+        
+        # Fast translate using Amazon Translate if not English
+        if language != 'en' and recommended_crops:
+            try:
+                print(f"Translating {len(recommended_crops)} crops to {language}")
+                for crop in recommended_crops:
+                    # Translate crop name
+                    name_result = translate_client.translate_text(
+                        Text=crop['name'],
+                        SourceLanguageCode='en',
+                        TargetLanguageCode=language
+                    )
+                    # Translate tips
+                    tips_result = translate_client.translate_text(
+                        Text=crop['tips'],
+                        SourceLanguageCode='en',
+                        TargetLanguageCode=language
+                    )
+                    # Translate soil type
+                    soil_result = translate_client.translate_text(
+                        Text=crop['soil_type'],
+                        SourceLanguageCode='en',
+                        TargetLanguageCode=language
+                    )
+                    # Translate rainfall
+                    rainfall_result = translate_client.translate_text(
+                        Text=crop['rainfall'],
+                        SourceLanguageCode='en',
+                        TargetLanguageCode=language
+                    )
+                    
+                    # Translate planting months
+                    if crop.get('planting'):
+                        planting_start = translate_client.translate_text(
+                            Text=crop['planting']['start'],
+                            SourceLanguageCode='en',
+                            TargetLanguageCode=language
+                        )
+                        planting_end = translate_client.translate_text(
+                            Text=crop['planting']['end'],
+                            SourceLanguageCode='en',
+                            TargetLanguageCode=language
+                        )
+                        crop['planting']['start'] = planting_start['TranslatedText']
+                        crop['planting']['end'] = planting_end['TranslatedText']
+                    
+                    # Translate harvesting months
+                    if crop.get('harvesting'):
+                        harvest_start = translate_client.translate_text(
+                            Text=crop['harvesting']['start'],
+                            SourceLanguageCode='en',
+                            TargetLanguageCode=language
+                        )
+                        harvest_end = translate_client.translate_text(
+                            Text=crop['harvesting']['end'],
+                            SourceLanguageCode='en',
+                            TargetLanguageCode=language
+                        )
+                        crop['harvesting']['start'] = harvest_start['TranslatedText']
+                        crop['harvesting']['end'] = harvest_end['TranslatedText']
+                    
+                    print(f"Translated {crop['name']} -> {name_result['TranslatedText']}")
+                    crop['name'] = name_result['TranslatedText']
+                    crop['tips'] = tips_result['TranslatedText']
+                    crop['soil_type'] = soil_result['TranslatedText']
+                    crop['rainfall'] = rainfall_result['TranslatedText']
+                print(f"Translation complete for {language}")
+            except Exception as e:
+                print(f"Amazon Translate error: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        return {
+            'current_season': current_season,
+            'user_location': user_location,
+            'weather': weather_info,
+            'recommended_crops': recommended_crops
+        }
+    except Exception as e:
+        print(f"Crop calendar error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/hyperlocal-context")
 async def get_hyperlocal_context(current_user: dict = Depends(get_current_user)):
     """Get hyperlocal agricultural context based on user location"""
@@ -1137,7 +1319,7 @@ async def report_pest_outbreak(current_user: dict = Depends(get_current_user), p
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/outbreak-map")
-async def get_outbreak_map():
+async def get_outbreak_map(current_user: dict = Depends(get_current_user), language: str = "en"):
     """Get pest/disease outbreak patterns across villages"""
     try:
         from boto3.dynamodb.conditions import Key
@@ -1176,11 +1358,30 @@ async def get_outbreak_map():
         
         # Identify outbreaks (5+ reports)
         outbreaks = []
+        language_name = LANGUAGE_NAMES.get(language, 'English')
+        
         for village, data in outbreak_data.items():
             total = data['pest'] + data['disease']
             if total >= 5:
+                # Translate village name if not English
+                translated_village = village
+                if language != 'en':
+                    try:
+                        translation_response = azure_client.chat.completions.create(
+                            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
+                            messages=[
+                                {"role": "system", "content": f"Translate this place name to {language_name}. Return ONLY the translated name."},
+                                {"role": "user", "content": village}
+                            ],
+                            max_tokens=20,
+                            temperature=0.3
+                        )
+                        translated_village = translation_response.choices[0].message.content.strip()
+                    except Exception as e:
+                        print(f"Village name translation error: {e}")
+                
                 outbreaks.append({
-                    'village': village,
+                    'village': translated_village,
                     'pest_count': data['pest'],
                     'disease_count': data['disease'],
                     'total_reports': total,
@@ -1463,3 +1664,427 @@ Be concise."""
     except Exception as e:
         print(f"Audio error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+
+# ==================== SMART FARM ADVISOR ENDPOINTS ====================
+
+@app.get("/api/weather")
+async def get_advisor_weather(current_user: dict = Depends(get_current_user)):
+    """Get weather data for Advisor page"""
+    try:
+        location = current_user.get("location", "Delhi")
+        city = location.split(",")[0].strip()
+        
+        api_key = os.getenv("OPENWEATHER_API_KEY")
+        if not api_key:
+            return {"temperature": 25, "humidity": 60, "rainfall": 0, "condition": "Clear", "alert": None}
+        
+        url = f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}&units=metric"
+        res = requests.get(url, timeout=10)
+        
+        if res.status_code != 200:
+            return {"temperature": 25, "humidity": 60, "rainfall": 0, "condition": "Clear", "alert": None}
+        
+        data = res.json()
+        
+        # Check for alerts
+        alert = None
+        if data["main"]["temp"] > 35:
+            alert = "High temperature alert. Ensure adequate irrigation."
+        elif data.get("rain", {}).get("1h", 0) > 10:
+            alert = "Heavy rainfall expected. Protect crops from waterlogging."
+        
+        return {
+            "temperature": round(data["main"]["temp"]),
+            "humidity": data["main"]["humidity"],
+            "rainfall": data.get("rain", {}).get("1h", 0),
+            "condition": data["weather"][0]["main"],
+            "alert": alert
+        }
+    except Exception as e:
+        print(f"Weather error: {e}")
+        return {"temperature": 25, "humidity": 60, "rainfall": 0, "condition": "Clear", "alert": None}
+
+
+@app.get("/api/agriculture-news")
+async def get_agriculture_news(current_user: dict = Depends(get_current_user)):
+    """Get agriculture news for Advisor page"""
+    try:
+        # Check MongoDB for cached news
+        news = list(mongo_db.agriculture_news.find().sort("published_at", -1).limit(6))
+        
+        if news:
+            for item in news:
+                item.pop('_id', None)
+            return news
+        
+        # Return sample news with images
+        sample_news = [
+            {
+                "title": "New PM-KISAN Scheme Benefits Announced for Small Farmers",
+                "summary": "Government announces increased financial assistance under PM-KISAN scheme. Eligible farmers will receive direct benefit transfers to support agricultural activities and improve rural livelihoods.",
+                "source": "Ministry of Agriculture",
+                "link": "https://pmkisan.gov.in",
+                "image": "https://images.unsplash.com/photo-1625246333195-78d9c38ad449?w=400&h=200&fit=crop",
+                "published_at": datetime.utcnow().isoformat()
+            },
+            {
+                "title": "IMD Predicts Normal Monsoon Rainfall This Season",
+                "summary": "India Meteorological Department forecasts normal monsoon rainfall across major agricultural regions. Farmers advised to prepare for timely sowing operations and optimize water management practices.",
+                "source": "IMD Weather",
+                "link": "https://mausam.imd.gov.in",
+                "image": "https://images.unsplash.com/photo-1527482797697-8795b05a13fe?w=400&h=200&fit=crop",
+                "published_at": datetime.utcnow().isoformat()
+            },
+            {
+                "title": "State Government Increases Organic Farming Subsidies",
+                "summary": "New policy provides enhanced subsidies for farmers transitioning to organic farming methods. Includes support for certification, training, and market linkages to promote sustainable agriculture.",
+                "source": "Agricultural Dept",
+                "link": "https://agricoop.gov.in",
+                "image": "https://images.unsplash.com/photo-1574943320219-553eb213f72d?w=400&h=200&fit=crop",
+                "published_at": datetime.utcnow().isoformat()
+            },
+            {
+                "title": "Drip Irrigation Systems Now Available at 50% Subsidy",
+                "summary": "Government launches new scheme offering 50% subsidy on drip irrigation systems. Aims to promote water conservation and improve crop yields through efficient irrigation technology.",
+                "source": "Water Resources",
+                "link": "https://pmksy.gov.in",
+                "image": "https://images.unsplash.com/photo-1592982537447-7440770cbfc9?w=400&h=200&fit=crop",
+                "published_at": datetime.utcnow().isoformat()
+            },
+            {
+                "title": "Crop Insurance Deadline Extended for Kharif Season",
+                "summary": "Pradhan Mantri Fasal Bima Yojana extends registration deadline. Farmers can now enroll until the end of the month to protect their crops against natural calamities and yield losses.",
+                "source": "PMFBY Portal",
+                "link": "https://pmfby.gov.in",
+                "image": "https://images.unsplash.com/photo-1560493676-04071c5f467b?w=400&h=200&fit=crop",
+                "published_at": datetime.utcnow().isoformat()
+            },
+            {
+                "title": "New Mobile App Launched for Real-Time Mandi Prices",
+                "summary": "Agriculture ministry launches mobile application providing real-time market prices from mandis across the country. Helps farmers make informed decisions about crop sales and market timing.",
+                "source": "eNAM Platform",
+                "link": "https://enam.gov.in",
+                "image": "https://images.unsplash.com/photo-1556761175-b413da4baf72?w=400&h=200&fit=crop",
+                "published_at": datetime.utcnow().isoformat()
+            }
+        ]
+        
+        return sample_news
+    except Exception as e:
+        print(f"Agriculture news error: {e}")
+        return []
+
+
+@app.get("/api/environmental-profile")
+async def get_environmental_profile(current_user: dict = Depends(get_current_user)):
+    """Get environmental profile for current user"""
+    try:
+        # Check if user has profile in MongoDB
+        profile = mongo_db.environmental_profiles.find_one({"user_phone": current_user["phone_number"]})
+        
+        if not profile:
+            # Create default profile
+            profile = {
+                "user_phone": current_user["phone_number"],
+                "location": current_user.get("location", "Unknown"),
+                "temperature": 12,
+                "humidity": 37,
+                "rainfall": 100,
+                "nitrogen": 50,
+                "phosphorus": 50,
+                "potassium": 50,
+                "soil_ph": 8.5,
+                "created_at": datetime.utcnow()
+            }
+            mongo_db.environmental_profiles.insert_one(profile)
+        
+        # Remove MongoDB _id
+        profile.pop('_id', None)
+        return profile
+    except Exception as e:
+        print(f"Environmental profile error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/crop-recommendations")
+async def get_crop_recommendations_smart(current_user: dict = Depends(get_current_user)):
+    """Get AI crop recommendations based on user location"""
+    try:
+        location = current_user.get("location", "")
+        
+        # Extract region from location (city, district, or state)
+        location_parts = [p.strip().lower() for p in location.split(",")]
+        
+        # Try to find crops suitable for user's region
+        query = {}
+        if location_parts:
+            # Search by region in crop data
+            query = {
+                "$or": [
+                    {"suitable_regions": {"$regex": location_parts[0], "$options": "i"}},
+                    {"climate_zone": {"$regex": location_parts[0], "$options": "i"}}
+                ]
+            }
+        
+        crops = list(mongo_db.crop_recommendations.find(query).limit(10))
+        
+        # If no location-specific crops found, get general recommendations
+        if not crops:
+            crops = list(mongo_db.crop_recommendations.find().limit(10))
+        
+        # Get user's environmental profile for compatibility scoring
+        profile = mongo_db.environmental_profiles.find_one({"user_phone": current_user["phone_number"]})
+        
+        if profile:
+            # Calculate compatibility for each crop
+            params = SoilParams(
+                nitrogen=profile.get("nitrogen", 50),
+                phosphorus=profile.get("phosphorus", 50),
+                potassium=profile.get("potassium", 50),
+                temperature=profile.get("temperature", 25),
+                humidity=profile.get("humidity", 60),
+                ph=profile.get("soil_ph", 7.0),
+                rainfall=profile.get("rainfall", 100)
+            )
+            
+            for crop in crops:
+                crop["soil_compatibility"] = calculate_compatibility(params, crop)
+            
+            # Sort by compatibility
+            crops.sort(key=lambda x: x.get("soil_compatibility", 0), reverse=True)
+        
+        for crop in crops:
+            crop.pop('_id', None)
+        
+        return crops
+    except Exception as e:
+        print(f"Crop recommendations error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/optimization-strategies")
+async def get_optimization_strategies(current_user: dict = Depends(get_current_user)):
+    """Generate AI-powered farming optimization strategies based on location and crops"""
+    try:
+        location = current_user.get("location", "India")
+        
+        # Get user's environmental profile
+        profile = mongo_db.environmental_profiles.find_one({"user_phone": current_user["phone_number"]})
+        
+        # Get top recommended crops
+        crops = list(mongo_db.crop_recommendations.find().limit(3))
+        crop_names = [c.get("crop_name", "") for c in crops]
+        
+        # Build context for AI
+        context = f"""Location: {location}
+Soil pH: {profile.get('soil_ph', 7.0) if profile else 7.0}
+Temperature: {profile.get('temperature', 25) if profile else 25}°C
+Humidity: {profile.get('humidity', 60) if profile else 60}%
+Rainfall: {profile.get('rainfall', 100) if profile else 100}mm
+Top Crops: {', '.join(crop_names)}"""
+        
+        # Generate strategies using AI
+        response = azure_client.chat.completions.create(
+            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
+            messages=[
+                {"role": "system", "content": "You are an agricultural expert. Generate 4 practical farming optimization strategies. Return ONLY a JSON array with objects containing: strategy_name, impact_level (High/Medium/Low), difficulty (Low/Medium/High), cost_effectiveness (percentage like 150%), badge (Minimal/Moderate/Peak). Be concise."},
+                {"role": "user", "content": f"Generate 4 farming optimization strategies for:\n{context}"}
+            ],
+            max_tokens=800,
+            temperature=0.7
+        )
+        
+        import json
+        strategies_text = response.choices[0].message.content.strip()
+        
+        # Extract JSON from response
+        if "```json" in strategies_text:
+            strategies_text = strategies_text.split("```json")[1].split("```")[0].strip()
+        elif "```" in strategies_text:
+            strategies_text = strategies_text.split("```")[1].split("```")[0].strip()
+        
+        try:
+            strategies = json.loads(strategies_text)
+            return strategies
+        except:
+            # Fallback to database strategies if AI parsing fails
+            strategies = list(mongo_db.optimization_strategies.find().limit(4))
+            for strategy in strategies:
+                strategy.pop('_id', None)
+            return strategies
+            
+    except Exception as e:
+        print(f"Optimization strategies error: {e}")
+        # Fallback to database
+        try:
+            strategies = list(mongo_db.optimization_strategies.find().limit(4))
+            for strategy in strategies:
+                strategy.pop('_id', None)
+            return strategies
+        except:
+            return []
+
+
+@app.get("/api/farm-intelligence")
+async def get_farm_intelligence(current_user: dict = Depends(get_current_user)):
+    """Get farm intelligence analytics"""
+    try:
+        analytics = mongo_db.farm_intelligence_analytics.find_one({"user_phone": current_user["phone_number"]})
+        
+        if not analytics:
+            # Create default analytics
+            analytics = {
+                "user_phone": current_user["phone_number"],
+                "location": current_user.get("location", "Unknown"),
+                "load_predictions": 3,
+                "top_crop": "mango",
+                "soil_stability": 86,
+                "climate_risk": "Low",
+                "feature_importance": {
+                    "nitrogen": 20,
+                    "phosphorus": 15,
+                    "potassium": 15,
+                    "temperature": 18,
+                    "humidity": 12,
+                    "ph": 10,
+                    "rainfall": 10
+                },
+                "created_at": datetime.utcnow()
+            }
+            mongo_db.farm_intelligence_analytics.insert_one(analytics)
+        
+        analytics.pop('_id', None)
+        return analytics
+    except Exception as e:
+        print(f"Farm intelligence error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class SoilParams(BaseModel):
+    nitrogen: int
+    phosphorus: int
+    potassium: int
+    temperature: int
+    humidity: int
+    ph: float
+    rainfall: int
+
+
+@app.post("/api/get-crop-recommendation")
+async def get_crop_recommendation_custom(params: SoilParams, current_user: dict = Depends(get_current_user)):
+    """Get crop recommendation based on custom soil parameters"""
+    try:
+        # Update user's environmental profile
+        mongo_db.environmental_profiles.update_one(
+            {"user_phone": current_user["phone_number"]},
+            {"$set": {
+                "nitrogen": params.nitrogen,
+                "phosphorus": params.phosphorus,
+                "potassium": params.potassium,
+                "temperature": params.temperature,
+                "humidity": params.humidity,
+                "soil_ph": params.ph,
+                "rainfall": params.rainfall,
+                "updated_at": datetime.utcnow()
+            }},
+            upsert=True
+        )
+        
+        # Get all crops and calculate compatibility
+        crops = list(mongo_db.crop_recommendations.find())
+        
+        for crop in crops:
+            crop.pop('_id', None)
+            # Calculate compatibility score
+            score = calculate_compatibility(params, crop)
+            crop["soil_compatibility"] = score
+        
+        # Sort by compatibility
+        crops.sort(key=lambda x: x["soil_compatibility"], reverse=True)
+        
+        return {"recommendations": crops[:10]}
+    except Exception as e:
+        print(f"Get recommendation error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def calculate_compatibility(params: SoilParams, crop: dict) -> int:
+    """Calculate crop compatibility score based on soil parameters"""
+    try:
+        optimal = crop.get("optimal_conditions", {})
+        
+        # If no optimal conditions, return default score
+        if not optimal:
+            return 50
+        
+        score = 0
+        checks = 0
+        
+        # Temperature check (15 points)
+        if "temperature_min" in optimal and "temperature_max" in optimal:
+            temp_min, temp_max = optimal["temperature_min"], optimal["temperature_max"]
+            if temp_min <= params.temperature <= temp_max:
+                score += 15
+            elif abs(params.temperature - (temp_min + temp_max) / 2) <= 5:
+                score += 10  # Partial score if close
+            checks += 15
+        
+        # Humidity check (15 points)
+        if "humidity_min" in optimal and "humidity_max" in optimal:
+            hum_min, hum_max = optimal["humidity_min"], optimal["humidity_max"]
+            if hum_min <= params.humidity <= hum_max:
+                score += 15
+            elif abs(params.humidity - (hum_min + hum_max) / 2) <= 10:
+                score += 10
+            checks += 15
+        
+        # Rainfall check (15 points)
+        if "rainfall_min" in optimal and "rainfall_max" in optimal:
+            rain_min, rain_max = optimal["rainfall_min"], optimal["rainfall_max"]
+            if rain_min <= params.rainfall <= rain_max:
+                score += 15
+            elif abs(params.rainfall - (rain_min + rain_max) / 2) <= 20:
+                score += 10
+            checks += 15
+        
+        # Nitrogen check (15 points)
+        if "nitrogen_min" in optimal and "nitrogen_max" in optimal:
+            n_min, n_max = optimal["nitrogen_min"], optimal["nitrogen_max"]
+            if n_min <= params.nitrogen <= n_max:
+                score += 15
+            elif abs(params.nitrogen - (n_min + n_max) / 2) <= 10:
+                score += 10
+            checks += 15
+        
+        # Phosphorus check (15 points)
+        if "phosphorus_min" in optimal and "phosphorus_max" in optimal:
+            p_min, p_max = optimal["phosphorus_min"], optimal["phosphorus_max"]
+            if p_min <= params.phosphorus <= p_max:
+                score += 15
+            elif abs(params.phosphorus - (p_min + p_max) / 2) <= 10:
+                score += 10
+            checks += 15
+        
+        # Potassium check (15 points)
+        if "potassium_min" in optimal and "potassium_max" in optimal:
+            k_min, k_max = optimal["potassium_min"], optimal["potassium_max"]
+            if k_min <= params.potassium <= k_max:
+                score += 15
+            elif abs(params.potassium - (k_min + k_max) / 2) <= 10:
+                score += 10
+            checks += 15
+        
+        # pH check (10 points)
+        if "ph_min" in optimal and "ph_max" in optimal:
+            ph_min, ph_max = optimal["ph_min"], optimal["ph_max"]
+            if ph_min <= params.ph <= ph_max:
+                score += 10
+            elif abs(params.ph - (ph_min + ph_max) / 2) <= 0.5:
+                score += 7
+            checks += 10
+        
+        return int((score / checks) * 100) if checks > 0 else 50
+    except Exception as e:
+        print(f"Compatibility calculation error: {e}")
+        return 50

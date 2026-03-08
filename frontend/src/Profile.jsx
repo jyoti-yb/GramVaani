@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Edit2, Save, X, User, Mail, MapPin, Globe, Calendar, MessageSquare, TrendingUp, Activity, Award, Menu, LogOut } from 'lucide-react'
 import axios from 'axios'
 import { getTranslation } from './translations'
+import Navbar from './Navbar'
 
 function Profile({ user, onBack, onUserUpdate, onLogout, onNavigate }) {
   const t = (key) => getTranslation(user?.language || 'en', key)
@@ -98,34 +99,7 @@ function Profile({ user, onBack, onUserUpdate, onLogout, onNavigate }) {
 
   return (
     <div className="profile-container">
-      <nav className="app-navbar">
-        <div className="navbar-content">
-          <div className="navbar-brand" onClick={() => onNavigate('home')}>
-            <span className="navbar-icon">🌾</span>
-            <span className="navbar-title">Gram Vaani</span>
-          </div>
-          <div className="navbar-menu">
-            <button className="nav-item" onClick={() => onNavigate('home')}>
-              <span>{t('home')}</span>
-            </button>
-            <button className="nav-item" onClick={() => onNavigate('features')}>
-              <Award size={18} />
-              <span>{t('features')}</span>
-            </button>
-            <button className="nav-item active">
-              <User size={18} />
-              <span>{t('profile')}</span>
-            </button>
-            <div className="nav-divider"></div>
-            <div className="nav-user-info">
-              <span className="nav-location">📍 {user?.location?.split(',')[0]}</span>
-            </div>
-            <button className="nav-logout" onClick={onLogout}>
-              <LogOut size={18} />
-            </button>
-          </div>
-        </div>
-      </nav>
+      <Navbar user={user} activePage="profile" onNavigate={onNavigate} onLogout={onLogout} language={user?.language || 'en'} />
       <div className="profile-content-wrapper">
         <div className="mobile-menu-toggle">
           <button onClick={() => setShowMobileMenu(!showMobileMenu)} className="menu-button">
@@ -329,8 +303,8 @@ function Profile({ user, onBack, onUserUpdate, onLogout, onNavigate }) {
                   <TrendingUp size={24} />
                 </div>
                 <div className="header-content">
-                  <h3>Activity Stats</h3>
-                  <p>Your usage overview</p>
+                  <h3>{t('activityStats')}</h3>
+                  <p>{t('usageOverview')}</p>
                 </div>
               </div>
               <div className="stats-grid">
@@ -340,7 +314,7 @@ function Profile({ user, onBack, onUserUpdate, onLogout, onNavigate }) {
                   </div>
                   <div className="stat-content">
                     <div className="stat-number">{stats.total}</div>
-                    <div className="stat-label">Total Queries</div>
+                    <div className="stat-label">{t('totalQueries')}</div>
                   </div>
                 </div>
                 <div className="stat-item">
@@ -349,7 +323,7 @@ function Profile({ user, onBack, onUserUpdate, onLogout, onNavigate }) {
                   </div>
                   <div className="stat-content">
                     <div className="stat-number">{stats.thisWeek}</div>
-                    <div className="stat-label">This Week</div>
+                    <div className="stat-label">{t('thisWeek')}</div>
                   </div>
                 </div>
               </div>
@@ -363,8 +337,8 @@ function Profile({ user, onBack, onUserUpdate, onLogout, onNavigate }) {
                   <Award size={24} />
                 </div>
                 <div className="header-content">
-                  <h3>Query Types</h3>
-                  <p>What you ask about most</p>
+                  <h3>{t('queryTypes')}</h3>
+                  <p>{t('mostAskedAbout')}</p>
                 </div>
               </div>
               <div className="types-list">
@@ -375,7 +349,7 @@ function Profile({ user, onBack, onUserUpdate, onLogout, onNavigate }) {
                     </div>
                     <div className="type-content">
                       <div className="type-name">{type}</div>
-                      <div className="type-count">{count} queries</div>
+                      <div className="type-count">{count} {t('queries')}</div>
                     </div>
                     <div className="type-bar">
                       <div 

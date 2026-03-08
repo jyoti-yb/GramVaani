@@ -3,6 +3,7 @@ import { Users, TrendingUp, AlertTriangle, Award, CheckCircle, X, Send, MapPin }
 import axios from 'axios'
 import { API_URL } from './config'
 import { getTranslation } from './translations'
+import Navbar from './Navbar'
 import './Community.css'
 
 function Community({ user, onBack, onLogout, onNavigate }) {
@@ -32,13 +33,8 @@ function Community({ user, onBack, onLogout, onNavigate }) {
           headers: { Authorization: `Bearer ${token}` }
         })
         setReports(res.data.reports || [])
-      } else if (activeTab === 'leaderboard') {
-        const res = await axios.get(`${API_URL}/api/village-leaderboard`, {
-          headers: { Authorization: `Bearer ${token}` }
-        })
-        setLeaderboard(res.data.leaderboard || [])
       } else if (activeTab === 'outbreaks') {
-        const res = await axios.get(`${API_URL}/api/outbreak-map`, {
+        const res = await axios.get(`${API_URL}/api/outbreak-map?language=${user?.language || 'en'}`, {
           headers: { Authorization: `Bearer ${token}` }
         })
         setOutbreaks(res.data.outbreaks || [])
@@ -83,37 +79,7 @@ function Community({ user, onBack, onLogout, onNavigate }) {
 
   return (
     <div className="community-container">
-      <nav className="app-navbar">
-        <div className="navbar-content">
-          <div className="navbar-brand" onClick={() => onNavigate('landing')}>
-            <span className="navbar-icon">🌾</span>
-            <span className="navbar-title">Gram Vaani</span>
-          </div>
-          <div className="navbar-menu">
-            <button className="nav-item" onClick={() => onNavigate('home')}>
-              <span>{t('home')}</span>
-            </button>
-            <button className="nav-item active">
-              <Users size={18} />
-              <span>{t('community')}</span>
-            </button>
-            <button className="nav-item" onClick={() => onNavigate('features')}>
-              <Award size={18} />
-              <span>{t('features')}</span>
-            </button>
-            <button className="nav-item" onClick={() => onNavigate('profile')}>
-              <span>{t('profile')}</span>
-            </button>
-            <div className="nav-divider"></div>
-            <div className="nav-user-info">
-              <span className="nav-location">📍 {user?.location?.split(',')[0]}</span>
-            </div>
-            <button className="nav-logout" onClick={onLogout}>
-              <span>Logout</span>
-            </button>
-          </div>
-        </div>
-      </nav>
+      <Navbar user={user} activePage="community" onNavigate={onNavigate} onLogout={onLogout} language={user?.language || 'en'} />
 
       <div className="community-content">
         <div className="community-header">
@@ -129,10 +95,6 @@ function Community({ user, onBack, onLogout, onNavigate }) {
           <button className={`tab ${activeTab === 'reports' ? 'active' : ''}`} onClick={() => setActiveTab('reports')}>
             <MapPin size={18} />
             {t('villageReports')}
-          </button>
-          <button className={`tab ${activeTab === 'leaderboard' ? 'active' : ''}`} onClick={() => setActiveTab('leaderboard')}>
-            <Award size={18} />
-            {t('leaderboard')}
           </button>
           <button className={`tab ${activeTab === 'outbreaks' ? 'active' : ''}`} onClick={() => setActiveTab('outbreaks')}>
             <AlertTriangle size={18} />
@@ -176,40 +138,24 @@ function Community({ user, onBack, onLogout, onNavigate }) {
             </div>
           )}
 
-          {activeTab === 'leaderboard' && (
-            <div className="leaderboard-list">
-              {leaderboard.map(village => (
-                <div key={village.village_id} className={`leaderboard-item ${village.tier.toLowerCase()}`}>
-                  <span className="rank">#{village.rank}</span>
-                  <span className="tier-icon">{village.tier_icon}</span>
-                  <div className="village-info">
-                    <h3>{village.village_id}</h3>
-                    <p>{village.total_responses} responses • {village.trust_score}% trust score</p>
-                  </div>
-                  <span className="tier-badge">{village.tier}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
           {activeTab === 'outbreaks' && (
             <div className="outbreaks-grid">
               {outbreaks.length === 0 ? (
                 <div className="empty-state">
-                  <p>✅ No outbreaks detected in your area</p>
+                  <p>✅ {t('noOutbreaks')}</p>
                 </div>
               ) : (
                 outbreaks.map((outbreak, idx) => (
                   <div key={idx} className={`outbreak-card ${outbreak.alert_level}`}>
                     <div className="outbreak-header">
                       <h3>⚠️ {outbreak.village}</h3>
-                      <span className={`alert-badge ${outbreak.alert_level}`}>{outbreak.alert_level}</span>
+                      <span className={`alert-badge ${outbreak.alert_level}`}>{t(outbreak.alert_level)}</span>
                     </div>
                     <div className="outbreak-stats">
-                      <span>🐛 {outbreak.pest_count} pest reports</span>
-                      <span>🦠 {outbreak.disease_count} disease reports</span>
+                      <span>🐛 {outbreak.pest_count} {t('pestReports')}</span>
+                      <span>🦠 {outbreak.disease_count} {t('diseaseReports')}</span>
                     </div>
-                    <p className="outbreak-total">{outbreak.total_reports} total reports in last 7 days</p>
+                    <p className="outbreak-total">{outbreak.total_reports} {t('totalReportsLast7Days')}</p>
                   </div>
                 ))
               )}

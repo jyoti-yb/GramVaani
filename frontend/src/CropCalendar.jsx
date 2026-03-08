@@ -18,7 +18,8 @@ const translations = {
     tips: 'Important Tips',
     loading: 'Loading...',
     error: 'Cannot load data',
-    noData: 'No crops available for your area'
+    noData: 'No crops available for your area',
+    to: 'to'
   },
   hi: {
     title: 'फसल कैलेंडर',
@@ -36,7 +37,8 @@ const translations = {
     tips: 'महत्वपूर्ण सुझाव',
     loading: 'लोड हो रहा है...',
     error: 'डेटा लोड नहीं हो सका',
-    noData: 'आपके क्षेत्र के लिए कोई फसल उपलब्ध नहीं'
+    noData: 'आपके क्षेत्र के लिए कोई फसल उपलब्ध नहीं',
+    to: 'से'
   },
   te: {
     title: 'పంట క్యాలెండర్',
@@ -54,7 +56,8 @@ const translations = {
     tips: 'ముఖ్యమైన చిట్కాలు',
     loading: 'లోడ్ అవుతోంది...',
     error: 'డేటా లోడ్ చేయలేకపోయింది',
-    noData: 'మీ ప్రాంతానికి పంటలు అందుబాటులో లేవు'
+    noData: 'మీ ప్రాంతానికి పంటలు అందుబాటులో లేవు',
+    to: 'నుండి'
   },
   ta: {
     title: 'பயிர் நாட்காட்டி',
@@ -72,7 +75,8 @@ const translations = {
     tips: 'முக்கிய குறிப்புகள்',
     loading: 'ஏற்றுகிறது...',
     error: 'தரவை ஏற்ற முடியவில்லை',
-    noData: 'உங்கள் பகுதிக்கு பயிர்கள் கிடைக்கவில்லை'
+    noData: 'உங்கள் பகுதிக்கு பயிர்கள் கிடைக்கவில்லை',
+    to: 'முதல்'
   },
   kn: {
     title: 'ಬೆಳೆ ಕ್ಯಾಲೆಂಡರ್',
@@ -90,7 +94,8 @@ const translations = {
     tips: 'ಪ್ರಮುಖ ಸಲಹೆಗಳು',
     loading: 'ಲೋಡ್ ಆಗುತ್ತಿದೆ...',
     error: 'ಡೇಟಾ ಲೋಡ್ ಮಾಡಲು ಸಾಧ್ಯವಿಲ್ಲ',
-    noData: 'ನಿಮ್ಮ ಪ್ರದೇಶಕ್ಕೆ ಬೆಳೆಗಳು ಲಭ್ಯವಿಲ್ಲ'
+    noData: 'ನಿಮ್ಮ ಪ್ರದೇಶಕ್ಕೆ ಬೆಳೆಗಳು ಲಭ್ಯವಿಲ್ಲ',
+    to: 'ರಿಂದ'
   },
   ml: {
     title: 'വിള കലണ്ടർ',
@@ -108,7 +113,8 @@ const translations = {
     tips: 'പ്രധാന നുറുങ്ങുകൾ',
     loading: 'ലോഡ് ചെയ്യുന്നു...',
     error: 'ഡാറ്റ ലോഡ് ചെയ്യാൻ കഴിയില്ല',
-    noData: 'നിങ്ങളുടെ പ്രദേശത്തിന് വിളകൾ ലഭ്യമല്ല'
+    noData: 'നിങ്ങളുടെ പ്രദേശത്തിന് വിളകൾ ലഭ്യമല്ല',
+    to: 'മുതൽ'
   },
   bn: {
     title: 'ফসল ক্যালেন্ডার',
@@ -126,7 +132,8 @@ const translations = {
     tips: 'গুরুত্বপূর্ণ টিপস',
     loading: 'লোড হচ্ছে...',
     error: 'ডেটা লোড করা যায়নি',
-    noData: 'আপনার এলাকার জন্য কোনো ফসল নেই'
+    noData: 'আপনার এলাকার জন্য কোনো ফসল নেই',
+    to: 'থেকে'
   },
   gu: {
     title: 'પાક કેલેન્ડર',
@@ -144,7 +151,8 @@ const translations = {
     tips: 'મહત્વપૂર્ણ સૂચનો',
     loading: 'લોડ થઈ રહ્યું છે...',
     error: 'ડેટા લોડ કરી શકાયો નહીં',
-    noData: 'તમારા વિસ્તાર માટે કોઈ પાક ઉપલબ્ધ નથી'
+    noData: 'તમારા વિસ્તાર માટે કોઈ પાક ઉપલબ્ધ નથી',
+    to: 'થી'
   },
   mr: {
     title: 'पीक कॅलेंडर',
@@ -162,7 +170,8 @@ const translations = {
     tips: 'महत्त्वाच्या सूचना',
     loading: 'लोड होत आहे...',
     error: 'डेटा लोड करता आला नाही',
-    noData: 'तुमच्या क्षेत्रासाठी कोणतीही पिके उपलब्ध नाहीत'
+    noData: 'तुमच्या क्षेत्रासाठी कोणतीही पिके उपलब्ध नाहीत',
+    to: 'ते'
   }
 };
 
@@ -173,14 +182,15 @@ const CropCalendar = ({ language = 'en' }) => {
 
   useEffect(() => {
     fetchCalendar();
-  }, []);
+  }, [language]);
 
   const fetchCalendar = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get('http://localhost:8000/api/crop-calendar', {
+      const response = await axios.get(`http://localhost:8000/api/crop-calendar?language=${language}&t=${Date.now()}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
+      console.log('Calendar data received:', response.data);
       setCalendarData(response.data);
     } catch (error) {
       console.error('Calendar fetch error:', error);
@@ -266,7 +276,7 @@ const CropCalendar = ({ language = 'en' }) => {
                     {crop.planting ? (
                       <div>
                         <div style={{fontWeight: 'bold', color: '#1976d2'}}>{crop.planting.start}</div>
-                        <div style={{fontSize: '14px', color: '#666'}}>to {crop.planting.end}</div>
+                        <div style={{fontSize: '14px', color: '#666'}}>{t('to')} {crop.planting.end}</div>
                       </div>
                     ) : '-'}
                   </td>
@@ -274,7 +284,7 @@ const CropCalendar = ({ language = 'en' }) => {
                     {crop.harvesting ? (
                       <div>
                         <div style={{fontWeight: 'bold', color: '#f57c00'}}>{crop.harvesting.start}</div>
-                        <div style={{fontSize: '14px', color: '#666'}}>to {crop.harvesting.end}</div>
+                        <div style={{fontSize: '14px', color: '#666'}}>{t('to')} {crop.harvesting.end}</div>
                       </div>
                     ) : '-'}
                   </td>
@@ -295,11 +305,6 @@ const CropCalendar = ({ language = 'en' }) => {
                     {crop.rainfall && (
                       <div style={{background: '#e3f2fd', padding: '8px', borderRadius: '5px', marginBottom: '5px'}}>
                         <strong>💧 {t('rainfall')}:</strong> {crop.rainfall}
-                      </div>
-                    )}
-                    {crop.weather_tip && (
-                      <div style={{background: '#fff9c4', padding: '8px', borderRadius: '5px', border: '2px solid #fbc02d'}}>
-                        <strong>⚠️</strong> {crop.weather_tip}
                       </div>
                     )}
                   </td>

@@ -20,7 +20,6 @@ function Landing({ onGetStarted }) {
       {/* Hero Section */}
       <div className="landing-hero">
         <div className="hero-content">
-          <div className="hero-badge">AI for Bharat Hackathon 2024</div>
           <h1 className="hero-title">Empowering Rural India with AI Voice Technology</h1>
           <p className="hero-description">
             Connect farmers with real-time information through multilingual AI assistance.
@@ -36,16 +35,16 @@ function Landing({ onGetStarted }) {
           </div>
           <div className="hero-stats">
             <div className="stat">
-              <div className="stat-number">9+</div>
-              <div className="stat-label">Languages</div>
+              <div className="stat-number" style={{color: '#ffffff'}}>9+</div>
+              <div className="stat-label" style={{color: '#e5e7eb'}}>Languages</div>
             </div>
             <div className="stat">
-              <div className="stat-number">100%</div>
-              <div className="stat-label">Voice Enabled</div>
+              <div className="stat-number" style={{color: '#ffffff'}}>100%</div>
+              <div className="stat-label" style={{color: '#e5e7eb'}}>Voice Enabled</div>
             </div>
             <div className="stat">
-              <div className="stat-number">24/7</div>
-              <div className="stat-label">Available</div>
+              <div className="stat-number" style={{color: '#ffffff'}}>24/7</div>
+              <div className="stat-label" style={{color: '#e5e7eb'}}>Available</div>
             </div>
           </div>
         </div>
@@ -173,7 +172,6 @@ function Landing({ onGetStarted }) {
             <p>AI Voice Assistant for Rural India</p>
           </div>
           <div className="footer-info">
-            <p>Built for AI for Bharat Hackathon 2024</p>
             <p>Empowering Rural Communities with Technology</p>
           </div>
         </div>

@@ -4,9 +4,10 @@ import axios from 'axios'
 import Auth from './Auth'
 import Profile from './Profile'
 import Landing from './Landing'
-import Features from './Features'
+import Advisor from './Advisor'
 import Community from './Community'
 import CropCalendar from './CropCalendar'
+import Navbar from './Navbar'
 import { API_URL } from './config'
 import { getTranslation } from './translations'
 
@@ -29,7 +30,7 @@ function App() {
   const [modalInput, setModalInput] = useState('')
   const [modalLocation, setModalLocation] = useState('')
   const [showProfile, setShowProfile] = useState(false)
-  const [showFeatures, setShowFeatures] = useState(false)
+  const [showAdvisor, setShowAdvisor] = useState(false)
   const [showCommunity, setShowCommunity] = useState(false)
   const [showCalendar, setShowCalendar] = useState(false)
   const [showFeedbackModal, setShowFeedbackModal] = useState(false)
@@ -107,11 +108,86 @@ function App() {
   }, [])
 
   useEffect(() => {
-    // If user is authenticated, skip landing page
-    if (isAuthenticated) {
-      setShowLanding(false)
+    // Auto-play audio when audioUrl changes
+    if (audioUrl && audioRef.current) {
+      const audio = audioRef.current
+      audio.muted = false
+      audio.volume = 1.0
+      
+      const attemptPlay = () => {
+        audio.load()
+        const playPromise = audio.play()
+        
+        if (playPromise !== undefined) {
+          playPromise
+            .then(() => {
+              console.log('Audio playing successfully')
+              setIsPlaying(true)
+            })
+            .catch(error => {
+              console.log('Autoplay prevented, will retry:', error)
+              // Try again after a short delay
+              setTimeout(() => {
+                audio.play()
+                  .then(() => setIsPlaying(true))
+                  .catch(e => console.log('Retry also failed:', e))
+              }, 300)
+            })
+        }
+      }
+      
+      // Wait for audio to be ready
+      if (audio.readyState >= 2) {
+        attemptPlay()
+      } else {
+        audio.addEventListener('canplay', attemptPlay, { once: true })
+      }
+      
+      return () => {
+        audio.removeEventListener('canplay', attemptPlay)
+      }
     }
-  }, [isAuthenticated])
+  }, [audioUrl])
+
+  useEffect(() => {
+    // Regenerate response when language changes
+    if (response && response.transcript && uiLanguage !== language) {
+      setLanguage(uiLanguage)
+      // Regenerate the last response in new language
+      const regenerateResponse = async () => {
+        setIsProcessing(true)
+        try {
+          const token = localStorage.getItem('token')
+          const res = await axios.post(`${API_URL}/process-text`, {
+            text: response.transcript,
+            language: uiLanguage
+          }, {
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+          })
+          setResponse({
+            transcript: response.transcript,
+            response_text: res.data.response_text || res.data,
+            query_id: res.data.query_id
+          })
+          if (res.data.audio_data) {
+            const audioBlob = new Blob([Uint8Array.from(atob(res.data.audio_data), c => c.charCodeAt(0))], { type: 'audio/wav' })
+            const audioUrl = URL.createObjectURL(audioBlob)
+            setAudioUrl(audioUrl)
+          }
+        } catch (err) {
+          console.error('Error regenerating response:', err)
+        } finally {
+          setIsProcessing(false)
+        }
+      }
+      regenerateResponse()
+    } else {
+      setLanguage(uiLanguage)
+    }
+  }, [uiLanguage])
 
   const t = (key) => getTranslation(uiLanguage, key)
 
@@ -227,13 +303,6 @@ function App() {
         const audioBlob = new Blob([Uint8Array.from(atob(response.data.audio_data), c => c.charCodeAt(0))], { type: 'audio/wav' })
         const audioUrl = URL.createObjectURL(audioBlob)
         setAudioUrl(audioUrl)
-        // Auto-play audio after setting URL
-        setTimeout(() => {
-          if (audioRef.current) {
-            audioRef.current.play()
-            setIsPlaying(true)
-          }
-        }, 100)
       }
     } catch (err) {
       const errorMessage = err.response?.data?.detail || 'Failed to process audio'
@@ -275,13 +344,6 @@ function App() {
         const audioBlob = new Blob([Uint8Array.from(atob(response.data.audio_data), c => c.charCodeAt(0))], { type: 'audio/wav' })
         const audioUrl = URL.createObjectURL(audioBlob)
         setAudioUrl(audioUrl)
-        // Auto-play audio after setting URL
-        setTimeout(() => {
-          if (audioRef.current) {
-            audioRef.current.play()
-            setIsPlaying(true)
-          }
-        }, 100)
       }
     } catch (err) {
       const errorMessage = err.response?.data?.detail || 'Failed to process text. Please try again.'
@@ -292,19 +354,37 @@ function App() {
     }
   }
 
-  const playAudio = () => {
+  const playAudio = async () => {
     if (audioRef.current) {
       if (isPlaying) {
         audioRef.current.pause()
         setIsPlaying(false)
       } else {
-        audioRef.current.play()
-        setIsPlaying(true)
+        try {
+          await audioRef.current.play()
+          setIsPlaying(true)
+        } catch (err) {
+          console.error('Audio play error:', err)
+          // Retry once after a short delay
+          setTimeout(async () => {
+            try {
+              await audioRef.current.play()
+              setIsPlaying(true)
+            } catch (retryErr) {
+              console.error('Audio retry failed:', retryErr)
+            }
+          }, 200)
+        }
       }
     }
   }
 
   const handleAudioEnded = () => setIsPlaying(false)
+
+  const handleAudioError = (e) => {
+    console.error('Audio error:', e)
+    setIsPlaying(false)
+  }
 
   const submitFeedback = async (helpful) => {
     try {
@@ -352,7 +432,7 @@ function App() {
     try {
       const token = localStorage.getItem('token')
       const res = await axios.post(`${API_URL}/api/weather`, { 
-        city: 'current', // This will use user's location from profile
+        city: 'current',
         language 
       }, {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -367,12 +447,6 @@ function App() {
         const audioBlob = new Blob([Uint8Array.from(atob(res.data.audio_data), c => c.charCodeAt(0))], { type: 'audio/wav' })
         const audioUrl = URL.createObjectURL(audioBlob)
         setAudioUrl(audioUrl)
-        setTimeout(() => {
-          if (audioRef.current) {
-            audioRef.current.play()
-            setIsPlaying(true)
-          }
-        }, 100)
       }
     } catch (err) {
       setError('Unable to fetch weather information for your location.')
@@ -393,7 +467,6 @@ function App() {
         const res = await axios.post(`${API_URL}/api/crop-prices`, { 
           crop: cropName,
           language 
-          // market will automatically use user's location from profile
         }, {
           headers: { 'Authorization': `Bearer ${token}` }
         })
@@ -407,12 +480,6 @@ function App() {
           const audioBlob = new Blob([Uint8Array.from(atob(res.data.audio_data), c => c.charCodeAt(0))], { type: 'audio/wav' })
           const audioUrl = URL.createObjectURL(audioBlob)
           setAudioUrl(audioUrl)
-          setTimeout(() => {
-            if (audioRef.current) {
-              audioRef.current.play()
-              setIsPlaying(true)
-            }
-          }, 100)
         }
       } catch (err) {
         setError(`Unable to fetch ${cropName} prices for your area.`)
@@ -458,13 +525,6 @@ function App() {
         const audioBlob = new Blob([Uint8Array.from(atob(res.data.audio_data), c => c.charCodeAt(0))], { type: 'audio/wav' })
         const audioUrl = URL.createObjectURL(audioBlob)
         setAudioUrl(audioUrl)
-        // Auto-play audio after setting URL
-        setTimeout(() => {
-          if (audioRef.current) {
-            audioRef.current.play()
-            setIsPlaying(true)
-          }
-        }, 100)
       }
     } catch {
       setError(`Unable to fetch ${modalType} information.`)
@@ -490,28 +550,33 @@ function App() {
   if (showProfile) {
     return (
       <Profile 
-        user={{...user, language: uiLanguage}} 
+        user={user} 
         onBack={() => setShowProfile(false)}
-        onUserUpdate={(updatedUser) => setUser({...user, ...updatedUser})}
+        onUserUpdate={(updatedUser) => {
+          setUser({...user, ...updatedUser})
+          setUiLanguage(updatedUser.language)
+        }}
         onLogout={handleLogout}
         onNavigate={(page) => {
-          if (page === 'home') { setShowProfile(false); setShowFeatures(false); }
-          else if (page === 'features') { setShowProfile(false); setShowFeatures(true); }
+          if (page === 'home') { setShowProfile(false); setShowAdvisor(false); setShowCommunity(false); }
+          else if (page === 'advisor') { setShowProfile(false); setShowAdvisor(true); setShowCommunity(false); }
+          else if (page === 'community') { setShowProfile(false); setShowAdvisor(false); setShowCommunity(true); }
         }}
       />
     )
   }
 
-  if (showFeatures) {
+  if (showAdvisor) {
     return (
-      <Features 
-        onBack={() => setShowFeatures(false)}
-        user={{...user, language: uiLanguage}}
-        onLogout={handleLogout}
+      <Advisor 
+        user={user}
         onNavigate={(page) => {
-          if (page === 'home') { setShowProfile(false); setShowFeatures(false); }
-          else if (page === 'profile') { setShowProfile(true); setShowFeatures(false); }
+          if (page === 'home') { setShowProfile(false); setShowAdvisor(false); setShowCommunity(false); }
+          else if (page === 'profile') { setShowProfile(true); setShowAdvisor(false); }
+          else if (page === 'community') { setShowCommunity(true); setShowAdvisor(false); }
         }}
+        onLogout={handleLogout}
+        onOpenVoiceAssistant={() => setShowAdvisor(false)}
       />
     )
   }
@@ -519,14 +584,14 @@ function App() {
   if (showCommunity) {
     return (
       <Community 
-        user={{...user, language: uiLanguage}}
+        user={user}
         onBack={() => setShowCommunity(false)}
         onLogout={handleLogout}
         onNavigate={(page) => {
-          if (page === 'landing') { setShowLanding(true); setShowProfile(false); setShowFeatures(false); setShowCommunity(false); }
-          else if (page === 'home') { setShowProfile(false); setShowFeatures(false); setShowCommunity(false); }
-          else if (page === 'profile') { setShowProfile(true); setShowFeatures(false); setShowCommunity(false); }
-          else if (page === 'features') { setShowProfile(false); setShowFeatures(true); setShowCommunity(false); }
+          if (page === 'landing') { setShowLanding(true); setShowProfile(false); setShowAdvisor(false); setShowCommunity(false); }
+          else if (page === 'home') { setShowProfile(false); setShowAdvisor(false); setShowCommunity(false); }
+          else if (page === 'profile') { setShowProfile(true); setShowAdvisor(false); setShowCommunity(false); }
+          else if (page === 'advisor') { setShowProfile(false); setShowAdvisor(true); setShowCommunity(false); }
         }}
       />
     )
@@ -535,42 +600,12 @@ function App() {
   if (showCalendar) {
     return (
       <div className="container">
-        <nav className="app-navbar">
-          <div className="navbar-content">
-            <div className="navbar-brand" onClick={() => { setShowProfile(false); setShowFeatures(false); setShowCommunity(false); setShowCalendar(false); }}>
-              <span className="navbar-icon">🌾</span>
-              <span className="navbar-title">Gram Vaani</span>
-            </div>
-            <div className="navbar-menu">
-              <button className="nav-item" onClick={() => { setShowProfile(false); setShowFeatures(false); setShowCommunity(false); setShowCalendar(false); }}>
-                <span>{t('home')}</span>
-              </button>
-              <button className="nav-item" onClick={() => setShowCommunity(true)}>
-                <Users size={18} />
-                <span>{t('community')}</span>
-              </button>
-              <button className="nav-item active">
-                <Calendar size={18} />
-                <span>{uiLanguage === 'hi' ? 'कैलेंडर' : uiLanguage === 'te' ? 'క్యాలెండర్' : uiLanguage === 'ta' ? 'நாட்காட்டி' : uiLanguage === 'kn' ? 'ಕ್ಯಾಲೆಂಡರ್' : uiLanguage === 'ml' ? 'കലണ്ടർ' : uiLanguage === 'bn' ? 'ক্যালেন্ডার' : uiLanguage === 'gu' ? 'કેલેન્ડર' : uiLanguage === 'mr' ? 'कॅलेंडर' : 'Calendar'}</span>
-              </button>
-              <button className="nav-item" onClick={() => setShowFeatures(true)}>
-                <Award size={18} />
-                <span>{t('features')}</span>
-              </button>
-              <button className="nav-item" onClick={() => setShowProfile(true)}>
-                <User size={18} />
-                <span>{t('profile')}</span>
-              </button>
-              <div className="nav-divider"></div>
-              <div className="nav-user-info">
-                <span className="nav-location">📍 {user?.location?.split(',')[0]}</span>
-              </div>
-              <button className="nav-logout" onClick={handleLogout}>
-                <LogOut size={18} />
-              </button>
-            </div>
-          </div>
-        </nav>
+        <Navbar user={user} activePage="calendar" onNavigate={(page) => {
+          if (page === 'home') { setShowProfile(false); setShowAdvisor(false); setShowCommunity(false); setShowCalendar(false); }
+          else if (page === 'advisor') { setShowAdvisor(true); setShowCalendar(false); }
+          else if (page === 'community') { setShowCommunity(true); setShowCalendar(false); }
+          else if (page === 'profile') { setShowProfile(true); setShowCalendar(false); }
+        }} onLogout={handleLogout} language={uiLanguage} />
         <CropCalendar language={uiLanguage} key={uiLanguage} />
       </div>
     )
@@ -578,42 +613,11 @@ function App() {
 
   return (
     <div className="container" key={user?.language}>
-      <nav className="app-navbar">
-        <div className="navbar-content">
-          <div className="navbar-brand" onClick={() => { setShowProfile(false); setShowFeatures(false); setShowCommunity(false); }}>
-            <span className="navbar-icon">🌾</span>
-            <span className="navbar-title">Gram Vaani</span>
-          </div>
-          <div className="navbar-menu">
-            <button className="nav-item" onClick={() => { setShowProfile(false); setShowFeatures(false); setShowCommunity(false); }}>
-              <span>{t('home')}</span>
-            </button>
-            <button className="nav-item" onClick={() => setShowCommunity(true)}>
-              <Users size={18} />
-              <span>{t('community')}</span>
-            </button>
-            <button className="nav-item" onClick={() => setShowCalendar(true)}>
-              <Calendar size={18} />
-              <span>{uiLanguage === 'hi' ? 'कैलेंडर' : uiLanguage === 'te' ? 'క్యాలెండర్' : uiLanguage === 'ta' ? 'நாட்காட்டி' : uiLanguage === 'kn' ? 'ಕ್ಯಾಲೆಂಡರ್' : uiLanguage === 'ml' ? 'കലണ്ടർ' : uiLanguage === 'bn' ? 'ক্যালেন্ডার' : uiLanguage === 'gu' ? 'કેલેન્ડર' : uiLanguage === 'mr' ? 'कॅलेंडर' : 'Calendar'}</span>
-            </button>
-            <button className="nav-item" onClick={() => setShowFeatures(true)}>
-              <Award size={18} />
-              <span>{t('features')}</span>
-            </button>
-            <button className="nav-item" onClick={() => setShowProfile(true)}>
-              <User size={18} />
-              <span>{t('profile')}</span>
-            </button>
-            <div className="nav-divider"></div>
-            <div className="nav-user-info">
-              <span className="nav-location">📍 {user?.location?.split(',')[0]}</span>
-            </div>
-            <button className="nav-logout" onClick={handleLogout}>
-              <LogOut size={18} />
-            </button>
-          </div>
-        </div>
-      </nav>
+      <Navbar user={user} activePage="home" onNavigate={(page) => {
+        if (page === 'advisor') setShowAdvisor(true)
+        else if (page === 'community') setShowCommunity(true)
+        else if (page === 'profile') setShowProfile(true)
+      }} onLogout={handleLogout} language={uiLanguage} />
 
       <div className="main-card">
         <div className="input-mode-selector">
@@ -683,7 +687,19 @@ function App() {
                   {isPlaying ? <Pause size={20} /> : <Play size={20} />}
                   {isPlaying ? t('pause') : t('playAudio')}
                 </button>
-                <audio ref={audioRef} src={audioUrl} onEnded={handleAudioEnded} />
+                <audio 
+                  ref={audioRef} 
+                  src={audioUrl} 
+                  onEnded={handleAudioEnded} 
+                  onError={handleAudioError} 
+                  preload="auto"
+                  playsInline
+                  onLoadedData={() => {
+                    if (audioRef.current) {
+                      audioRef.current.play().then(() => setIsPlaying(true)).catch(e => console.log('Play on load failed:', e))
+                    }
+                  }}
+                />
               </div>
             )}
           </div>
