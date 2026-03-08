@@ -10,4 +10,3 @@ venv/
 .gitignore
 *.md
 .DS_Store
-*.log
