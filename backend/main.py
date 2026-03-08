@@ -6,7 +6,13 @@ from pydantic import BaseModel
 from openai import AzureOpenAI
 import os
 import base64
-import azure.cognitiveservices.speech as speechsdk
+# Azure Speech SDK is optional - only import if available
+try:
+    import azure.cognitiveservices.speech as speechsdk
+    AZURE_SPEECH_AVAILABLE = True
+except ImportError:
+    AZURE_SPEECH_AVAILABLE = False
+    print("Azure Speech SDK not available - using AWS Polly for all languages")
 import boto3
 from dotenv import load_dotenv
 import requests
@@ -102,15 +108,21 @@ LANGUAGE_TO_LOCALE = {
     "mr": "mr-IN",
 }
 
-# Polly for Hindi and English only
-POLLY_LANGUAGES = {"en", "hi"}
-
+# AWS Polly voices for all Indian languages
 LANGUAGE_TO_POLLY_VOICE = {
     "en": ("Joanna", "en-US"),
     "hi": ("Aditi", "hi-IN"),
+    # Fallback to Hindi voice for other Indian languages if Azure Speech not available
+    "ta": ("Aditi", "hi-IN"),
+    "te": ("Aditi", "hi-IN"),
+    "kn": ("Aditi", "hi-IN"),
+    "ml": ("Aditi", "hi-IN"),
+    "bn": ("Aditi", "hi-IN"),
+    "gu": ("Aditi", "hi-IN"),
+    "mr": ("Aditi", "hi-IN"),
 }
 
-# Azure Speech for other Indian languages
+# Azure Speech for other Indian languages (only if SDK is available)
 AZURE_SPEECH_VOICES = {
     "ta": "ta-IN-ValluvarNeural",
     "te": "te-IN-ShrutiNeural",
@@ -157,54 +169,48 @@ def synthesize_speech(text: str, language: str) -> Optional[str]:
     if not text:
         return None
     
-    # Use Polly for Hindi and English
-    if language in POLLY_LANGUAGES:
-        try:
-            voice_config = LANGUAGE_TO_POLLY_VOICE.get(language, ("Joanna", "en-US"))
-            voice_id, language_code = voice_config
-            
-            print(f"Polly TTS: voice={voice_id}, language={language_code}")
-            
-            response = polly_client.synthesize_speech(
-                Text=text,
-                OutputFormat="mp3",
-                VoiceId=voice_id,
-                LanguageCode=language_code
-            )
-            audio_data = response["AudioStream"].read()
-            return base64.b64encode(audio_data).decode("utf-8")
-        except Exception as e:
-            print(f"Polly synthesis error: {e}")
-            return None
-    
-    # Use Azure Speech for other Indian languages
-    else:
+    # Try Azure Speech for regional languages if available and configured
+    if AZURE_SPEECH_AVAILABLE and language in AZURE_SPEECH_VOICES:
         try:
             speech_key = os.getenv("AZURE_SPEECH_KEY")
             speech_region = os.getenv("AZURE_SPEECH_REGION")
             
-            if not speech_key or not speech_region:
-                print("Azure Speech credentials not configured")
-                return None
-            
-            speech_config = speechsdk.SpeechConfig(subscription=speech_key, region=speech_region)
-            voice_name = AZURE_SPEECH_VOICES.get(language, "en-US-JennyNeural")
-            speech_config.speech_synthesis_voice_name = voice_name
-            speech_config.set_speech_synthesis_output_format(speechsdk.SpeechSynthesisOutputFormat.Audio16Khz32KBitRateMonoMp3)
-            
-            print(f"Azure Speech TTS: voice={voice_name}, region={speech_region}")
-            
-            synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=None)
-            result = synthesizer.speak_text_async(text).get()
-            
-            if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
-                return base64.b64encode(result.audio_data).decode("utf-8")
-            else:
-                print(f"Azure Speech synthesis failed: {result.reason}")
-                return None
+            if speech_key and speech_region:
+                speech_config = speechsdk.SpeechConfig(subscription=speech_key, region=speech_region)
+                voice_name = AZURE_SPEECH_VOICES.get(language)
+                speech_config.speech_synthesis_voice_name = voice_name
+                speech_config.set_speech_synthesis_output_format(speechsdk.SpeechSynthesisOutputFormat.Audio16Khz32KBitRateMonoMp3)
+                
+                print(f"Azure Speech TTS: voice={voice_name}, region={speech_region}")
+                
+                synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=None)
+                result = synthesizer.speak_text_async(text).get()
+                
+                if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
+                    return base64.b64encode(result.audio_data).decode("utf-8")
+                else:
+                    print(f"Azure Speech synthesis failed: {result.reason}, falling back to Polly")
         except Exception as e:
-            print(f"Azure Speech synthesis error: {e}")
-            return None
+            print(f"Azure Speech synthesis error: {e}, falling back to Polly")
+    
+    # Use AWS Polly as default/fallback for all languages
+    try:
+        voice_config = LANGUAGE_TO_POLLY_VOICE.get(language, ("Joanna", "en-US"))
+        voice_id, language_code = voice_config
+        
+        print(f"Polly TTS: voice={voice_id}, language={language_code}")
+        
+        response = polly_client.synthesize_speech(
+            Text=text,
+            OutputFormat="mp3",
+            VoiceId=voice_id,
+            LanguageCode=language_code
+        )
+        audio_data = response["AudioStream"].read()
+        return base64.b64encode(audio_data).decode("utf-8")
+    except Exception as e:
+        print(f"Polly synthesis error: {e}")
+        return None
 
 # Models
 class UserSignup(BaseModel):
