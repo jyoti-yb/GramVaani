@@ -1,0 +1,118 @@
+{
+  "current_season_info": {
+    "1": "rabi", "2": "rabi", "3": "rabi",
+    "4": "summer", "5": "summer",
+    "6": "kharif", "7": "kharif", "8": "kharif", "9": "kharif", "10": "kharif",
+    "11": "rabi", "12": "rabi"
+  },
+  "crops": {
+    "rice": {
+      "name": "Rice", "hindi": "चावल", "season": "kharif",
+      "planting": { "start": "June", "end": "July" },
+      "harvesting": { "start": "October", "end": "November" },
+      "duration_days": 120,
+      "tips": "Requires flooded fields. Transplant seedlings after 25-30 days.",
+      "soil_type": "Clay or clay loam soil",
+      "rainfall": "High (1000-2000mm)"
+    },
+    "wheat": {
+      "name": "Wheat", "hindi": "गेहूं", "season": "rabi",
+      "planting": { "start": "November", "end": "December" },
+      "harvesting": { "start": "March", "end": "April" },
+      "duration_days": 120,
+      "tips": "Sow after temperature drops below 25°C. Irrigate at crown root initiation.",
+      "soil_type": "Well-drained loamy soil",
+      "rainfall": "Moderate (450-650mm)"
+    },
+    "maize": {
+      "name": "Maize", "hindi": "मक्का", "season": "kharif",
+      "planting": { "start": "June", "end": "July" },
+      "harvesting": { "start": "September", "end": "October" },
+      "duration_days": 90,
+      "tips": "Needs well-drained soil. Apply nitrogen fertilizer in splits.",
+      "soil_type": "Well-drained loamy soil",
+      "rainfall": "Moderate (600-900mm)"
+    },
+    "cotton": {
+      "name": "Cotton", "hindi": "कपास", "season": "kharif",
+      "planting": { "start": "May", "end": "June" },
+      "harvesting": { "start": "October", "end": "December" },
+      "duration_days": 180,
+      "tips": "Requires warm climate. Monitor for bollworm regularly.",
+      "soil_type": "Black cotton soil (Vertisol)",
+      "rainfall": "Moderate (500-1000mm)"
+    },
+    "sugarcane": {
+      "name": "Sugarcane", "hindi": "गन्ना", "season": "year-round",
+      "planting": { "start": "February", "end": "March" },
+      "harvesting": { "start": "November", "end": "February" },
+      "duration_days": 365,
+      "tips": "Plant setts with 2-3 buds. Requires heavy irrigation.",
+      "soil_type": "Deep loamy soil",
+      "rainfall": "High (1500-2500mm)"
+    },
+    "mustard": {
+      "name": "Mustard", "hindi": "सरसों", "season": "rabi",
+      "planting": { "start": "October", "end": "November" },
+      "harvesting": { "start": "February", "end": "March" },
+      "duration_days": 110,
+      "tips": "Sow in rows 30cm apart. Apply sulfur fertilizer for better yield.",
+      "soil_type": "Sandy loam to loam soil",
+      "rainfall": "Low to moderate (300-500mm)"
+    },
+    "soybean": {
+      "name": "Soybean", "hindi": "सोयाबीन", "season": "kharif",
+      "planting": { "start": "June", "end": "July" },
+      "harvesting": { "start": "September", "end": "October" },
+      "duration_days": 95,
+      "tips": "Inoculate seeds with Rhizobium. Avoid waterlogging.",
+      "soil_type": "Well-drained loamy soil",
+      "rainfall": "Moderate (600-900mm)"
+    },
+    "tomato": {
+      "name": "Tomato", "hindi": "टमाटर", "season": "year-round",
+      "planting": { "start": "June", "end": "July" },
+      "harvesting": { "start": "September", "end": "November" },
+      "duration_days": 75,
+      "tips": "Stake plants for support. Monitor for leaf curl virus.",
+      "soil_type": "Well-drained sandy loam",
+      "rainfall": "Moderate (600-1200mm)"
+    },
+    "onion": {
+      "name": "Onion", "hindi": "प्याज", "season": "rabi",
+      "planting": { "start": "October", "end": "November" },
+      "harvesting": { "start": "February", "end": "April" },
+      "duration_days": 130,
+      "tips": "Transplant seedlings at 4-5 leaf stage. Reduce irrigation before harvest.",
+      "soil_type": "Well-drained loamy soil",
+      "rainfall": "Low to moderate (650-750mm)"
+    },
+    "potato": {
+      "name": "Potato", "hindi": "आलू", "season": "rabi",
+      "planting": { "start": "October", "end": "November" },
+      "harvesting": { "start": "January", "end": "February" },
+      "duration_days": 90,
+      "tips": "Use certified seed tubers. Earth up after 30 days of planting.",
+      "soil_type": "Sandy loam to loam soil",
+      "rainfall": "Moderate (500-750mm)"
+    },
+    "groundnut": {
+      "name": "Groundnut", "hindi": "मूंगफली", "season": "kharif",
+      "planting": { "start": "June", "end": "July" },
+      "harvesting": { "start": "September", "end": "October" },
+      "duration_days": 110,
+      "tips": "Requires well-drained sandy loam. Apply gypsum at pegging stage.",
+      "soil_type": "Sandy loam soil",
+      "rainfall": "Moderate (500-1000mm)"
+    },
+    "watermelon": {
+      "name": "Watermelon", "hindi": "तरबूज", "season": "summer",
+      "planting": { "start": "February", "end": "March" },
+      "harvesting": { "start": "April", "end": "May" },
+      "duration_days": 80,
+      "tips": "Grow on sandy river beds. Requires warm temperature and full sun.",
+      "soil_type": "Sandy loam soil",
+      "rainfall": "Low (400-600mm)"
+    }
+  }
+}
