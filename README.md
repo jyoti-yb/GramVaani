@@ -6,19 +6,11 @@ Hello everyone, we are **Team RuntimeTerror404**, building **Gram Vaani** for fa
 
 Gram Vaani is a full-stack AI platform that lets farmers ask questions by **voice or text** in 9 Indian languages and get instant, spoken answers about weather, crop prices, government schemes, and farming advice available to everyone through Whatsapp and Web Platform — powered by AWS AI services.
 
----
-
 ## 🎥 Demo
 
-| Live App |
-|----------|
-| [gramvaani.app](https://main.d2nyxvia2edun4.amplifyapp.com) | 
-
-Demo Video Link : https://youtu.be/2aF7rKh80q4?si=N34kawKXhakncGVa
-Whatsapp chatbot link: https://wa.me/919490872665/
-
-
----
+| Live App | Demo Video | Whatsapp chatbot |
+|----------|------------|------------------|
+| [gramvaani.app](https://main.d2nyxvia2edun4.amplifyapp.com) | [Video](https://youtu.be/2aF7rKh80q4?si=N34kawKXhakncGVa) | [Bot](https://wa.me/919490872665/) |
 
 ## 🧠 The Problem
 
@@ -28,8 +20,6 @@ Rural farmers in India face three critical barriers:
 - **Access** — no single platform for weather + prices + schemes + community alerts
 
 Gram Vaani solves all three with a **voice-first, multilingual, community-powered** platform.
-
----
 
 ## ✨ Key Features
 
@@ -69,7 +59,6 @@ Gram Vaani solves all three with a **voice-first, multilingual, community-powere
 - Farmers can interact via WhatsApp without installing any app
 - Same AI routing (weather / prices / schemes / general) as the web app
 
----
 
 ## 🚀 Local Setup
 
@@ -118,8 +107,6 @@ npm run dev
 
 App runs at: `http://localhost:5173`
 
----
-
 ## ☁️ AWS Services Used
 
 | Service | Usage |
@@ -131,8 +118,6 @@ App runs at: `http://localhost:5173`
 | **AWS S3** | Temporary audio storage for Transcribe jobs (auto-deleted after use) |
 | **AWS App Runner** | Serverless container deployment for the FastAPI backend |
 
----
-
 ## 🔒 Security
 
 - Passwords hashed with **bcrypt**
@@ -140,8 +125,6 @@ App runs at: `http://localhost:5173`
 - Tokens expire after **30 minutes**
 - CORS restricted to known frontend origins
 - No credentials stored in code — all via environment variables
-
----
 
 ## 🤝 Contributing
 
@@ -157,6 +140,6 @@ App runs at: `http://localhost:5173`
 **RuntimeTerror404** — Built for AWS AI for Bharat Hackathon
 
 > Feel free to connect with us on LinkedIn:
-**Jyoti Yadav** : https://www.linkedin.com/in/jyotiyadavb/
-**Eshwar Krishna** : https://www.linkedin.com/in/eshwarkrishna?utm_source=share_via&utm_content=profile&utm_medium=member_android
+**Jyoti Yadav** : https://www.linkedin.com/in/jyotiyadavb/  <br>
+**Eshwar Krishna** : https://www.linkedin.com/in/eshwarkrishna?utm_source=share_via&utm_content=profile&utm_medium=member_android   <br>
 **Devi Sruhitha** : https://www.linkedin.com/in/sruhitha-kota-052b012a3/
