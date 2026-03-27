@@ -17,7 +17,7 @@ Gram Vaani is a full-stack AI platform that lets farmers ask questions by **voic
 Rural farmers in India face three critical barriers:
 - **Language** — most AI tools only work in English
 - **Literacy** — text-based interfaces exclude millions
-- **Access** — no single platform for weather + prices + schemes + community alerts
+- **Access** — no single platform for weather , crop prices, Govt schemes, Trusted community alerts
 
 Gram Vaani solves all three with a **voice-first, multilingual, community-powered** platform.
 
@@ -133,13 +133,11 @@ App runs at: `http://localhost:5173`
 3. Commit your changes: `git commit -m 'Add your feature'`
 4. Push and open a Pull Request
 
----
-
 ## 👨‍💻 Built By
 
 **RuntimeTerror404** — Built for AWS AI for Bharat Hackathon
 
-> Feel free to connect with us on LinkedIn:
-**Jyoti Yadav** : https://www.linkedin.com/in/jyotiyadavb/  <br>
-**Eshwar Krishna** : https://www.linkedin.com/in/eshwarkrishna?utm_source=share_via&utm_content=profile&utm_medium=member_android   <br>
-**Devi Sruhitha** : https://www.linkedin.com/in/sruhitha-kota-052b012a3/
+> Feel free to connect with us on LinkedIn: <br>
+- **Jyoti Yadav**: [Profile](https://www.linkedin.com/in/jyotiyadavb/)
+- **Eshwar Krishna**: [Profile](https://www.linkedin.com/in/eshwarkrishna)
+- **Sruhitha Devi**: [Profile](https://www.linkedin.com/in/sruhitha-kota-052b012a3/)
